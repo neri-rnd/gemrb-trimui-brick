@@ -114,6 +114,10 @@ echo ">>> Overlaying custom Python scripts..."
 cp /workspace/custom_scripts/pst/*.py /workspace/gemrb/build/engine/engine/GUIScripts/pst/
 echo "    Copied: $(ls /workspace/custom_scripts/pst/*.py | xargs -n1 basename | tr '\n' ' ')"
 
+echo ">>> Patching PST gemrb.ini (ButtonFont = NORMAL)..."
+sed -i 's/^ButtonFont = FONTDLG/ButtonFont = NORMAL/' /workspace/gemrb/build/engine/engine/unhardcoded/pst/gemrb.ini
+echo "    ButtonFont set to NORMAL (bitmap font for UI elements)"
+
 echo ">>> Packaging engine.zip..."
 cd /workspace/gemrb/build/engine/engine
 zip -9r /workspace/engine.zip .

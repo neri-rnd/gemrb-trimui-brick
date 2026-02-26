@@ -30,17 +30,54 @@ index deeb10e..75700af 100644
  static const auto DisplayFormatSimple = u"[p]{}[/p]";
  
  DisplayMessage::StrRefs DisplayMessage::SRefs;
+diff --git a/gemrb/core/GUI/ScrollBar.cpp b/gemrb/core/GUI/ScrollBar.cpp
+index abc1234..def5678 100644
+--- a/gemrb/core/GUI/ScrollBar.cpp
++++ b/gemrb/core/GUI/ScrollBar.cpp
+@@ -21,6 +21,8 @@
+ #include "ScrollBar.h"
+
+ #include "GUI/EventMgr.h"
++#include "Interface.h"
++
+ #include "Video/Video.h"
+
+ namespace GemRB {
+@@ -257,11 +259,13 @@ bool ScrollBar::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
+ {
+ 	if (State == 0) {
++		int scrollSpeed = core->GetDictionary().Get("Keyboard Scroll Speed", 64);
++		int steps = (StepIncrement > 0) ? std::max(1, scrollSpeed / StepIncrement) : 1;
+ 		switch (key.keycode) {
+ 			// TODO: should probably only handle keys corresponding to scroll direction
+ 			case GEM_UP:
+-				ScrollUp();
++				ScrollBySteps(-steps);
+ 				return true;
+ 			case GEM_DOWN:
+-				ScrollDown();
++				ScrollBySteps(steps);
+ 				return true;
+ 			case GEM_LEFT:
 diff --git a/gemrb/core/GUI/ScrollView.cpp b/gemrb/core/GUI/ScrollView.cpp
 index 59494e8..22155aa 100644
 --- a/gemrb/core/GUI/ScrollView.cpp
 +++ b/gemrb/core/GUI/ScrollView.cpp
-@@ -368,8 +368,7 @@ void ScrollView::ScrollTo(Point newP, ieDword duration)
- 
+@@ -20,6 +20,7 @@
+ #include "ScrollView.h"
+
+ #include "GUIScriptInterface.h"
++#include "Interface.h"
+
+ #include "GUI/ScrollBar.h"
+ #include "Logging/Logging.h"
+@@ -368,8 +369,7 @@ void ScrollView::ScrollTo(Point newP, ieDword duration)
+
  bool ScrollView::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
  {
 -	// TODO: get scroll amount from settings
 -	int amount = 10;
-+	int amount = (vscroll) ? vscroll->StepIncrement * 3 : 30;
++	int amount = core->GetDictionary().Get("Keyboard Scroll Speed", 64);
  	Point scroll;
  	switch (key.keycode) {
  		case GEM_UP:

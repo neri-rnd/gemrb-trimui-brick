@@ -64,6 +64,9 @@ adb push "$SCRIPT_DIR/device/fonts/Literata.ttf" "$DEVICE_DIR/fonts/Literata.ttf
 adb shell "mkdir -p $DEVICE_DIR/games/pst/override"
 adb push "$SCRIPT_DIR/device/games/pst/override/fonts.2da" "$DEVICE_DIR/games/pst/override/fonts.2da"
 
+echo ">>> Patching gemrb.ini (ButtonFont = NORMAL)..."
+adb push "$SCRIPT_DIR/device/engine/unhardcoded/pst/gemrb.ini" "$DEVICE_DIR/engine/unhardcoded/pst/gemrb.ini"
+
 # --- Done ---
 
 echo ""

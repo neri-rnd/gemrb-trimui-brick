@@ -14,6 +14,58 @@ Custom scripts: `gemrb-fix/custom_scripts/pst/` (MessageWindow.py, FloatMenuWind
 
 ---
 
+## 27. Keyboard Scroll Speed Reads Game Setting
+
+**Problem:** The in-game "Keyboard Scroll Speed" slider (Settings menu) had no effect on TextArea scrolling. The slider value was stored in the game dictionary but never read by the scrolling code.
+
+**Root cause:** When the scrollbar is focused (our fix for keyboard scrolling in entries #9/#26), `ScrollBar::OnKeyPress` handles key events — not `ScrollView::OnKeyPress`. ScrollBar called `ScrollUp()`/`ScrollDown()` → `ScrollBySteps(±1)`, which scrolls by a fixed `StepIncrement` (set from the CHU definition). The game setting was never consulted. The previous `ScrollView::OnKeyPress` fix (entry #13's `StepIncrement * 3`) was also dead code for the same reason — it only ran when ScrollView handled keys directly (no focused scrollbar).
+
+**Fix (`dialogue_customization.patch`, ScrollBar.cpp + ScrollView.cpp):**
+- `ScrollBar::OnKeyPress`: Read `core->GetDictionary().Get("Keyboard Scroll Speed", 64)`, convert to steps via `scrollSpeed / StepIncrement`, call `ScrollBySteps(±steps)` instead of `ScrollUp()`/`ScrollDown()`
+- `ScrollView::OnKeyPress`: Also reads the game setting (fallback path when no scrollbar is focused)
+- Added `#include "Interface.h"` to both files for access to the `core` global
+- Default 64 matches the game's default slider value
+
+**Requires rebuild** (C++ change).
+
+---
+
+## 26. Journal Keyboard Scrolling
+
+**Problem:** L1/L2 (up/down keys) worked for scrolling in the dialogue window and inventory descriptions, but not in the Journal. Opening Journal > Log/Quests/Beasts and pressing L1/L2 did nothing — you had to click the scrollbar first.
+
+**Root cause:** `OpenLogWindow()` calls `LogWindow.Focus()` which focuses the **Window**, not the TextArea's ScrollBar. Key events go only to the focused control (`Window::DispatchKey`). Since the Window itself was focused, arrow keys never reached the TextArea's internal ScrollView. Compare with dialogue (`MessageWindow.py:182-184`) which correctly calls `sb.Focus()` on the TextArea's scrollbar.
+
+**Fix (GUIJRNL.py, Python-only):**
+- Created PST-specific `GUIJRNL.py` override in `custom_scripts/pst/` (shadows upstream via GUIScripts path priority)
+- `OpenLogWindow()`: After `Text.SetText()` and `LogWindow.Focus()`, focus the TextArea's scrollbar
+- `OnJournalQuestSelect()`: After setting quest description text, focus QuestDesc's scrollbar
+- `OnJournalBeastSelect()`: After setting beast description text, focus BeastDesc's scrollbar
+
+Pattern used (same as MessageWindow.py):
+```python
+sb = TextArea.GetScrollBar()
+if sb:
+    sb.Focus()
+```
+
+No rebuild needed — Python overlay, picked up by next `build.sh`.
+
+---
+
+## 25. Font Differentiation — ButtonFont = NORMAL
+
+**Problem:** After switching the dialogue font to Literata TTF 18px (entry #14), the same font was also used for button labels, menu items, item descriptions, and other UI elements that should use the original bitmap font. Everything looked the same — no visual distinction between dialogue text and UI chrome.
+
+**Root cause:** GemRB's `fonts.2da` row 0 (`FONTDLG`) is the default font used everywhere. Overriding it to TTF affected all text, not just dialogue. The `ButtonFont` setting in `gemrb.ini` controls which font is used for buttons and UI elements, but it defaulted to the same `FONTDLG`.
+
+**Fix (`gemrb.ini` + `build.sh`):**
+- Set `ButtonFont = NORMAL` in `unhardcoded/pst/gemrb.ini` — points buttons/UI to `fonts.2da` row 9 (the original bitmap BAM font)
+- Dialogue text uses Literata TTF 18px, UI chrome uses original PST bitmap font
+- Added `sed` step in `build.sh` to patch `ButtonFont` after install — persists across rebuilds (the previous manual device edit was overwritten by `engine.zip` deploys)
+
+---
+
 ## 24. Fix Dialogue Window Flash When Opening/Closing Chests
 
 **Problem:** When opening or closing a chest (container), the custom dialogue window (dark 288px overlay) briefly flashed on screen for 1-2 frames.
@@ -520,21 +572,6 @@ All above changes are in `patches_094/GLES2_shader_fix.patch`, applied by `build
 
 ---
 
-## Pending / In Progress
-
-### Dialogue scroll position (design question)
-- **Problem:** When dialogue opens with many options, the view auto-scrolls to the bottom (last option), hiding the speaker's text at the top. On a handheld you lose context of what was said.
-- **Possible fix:** Change `IE_GUI_TEXTAREA_AUTOSCROLL` behavior — instead of scrolling to bottom, scroll to where the new dialogue text begins (the speaker's line), letting options overflow below. Player scrolls down with L1/L2 to see more options.
-
-### Resolved (kept for reference)
-- ~~Scrollbar overlaps gold counter~~ — fixed in entry #14 (scrollbar positioned below gold counter)
-- ~~Text margins too tight~~ — fixed in entry #14 (SetMargins 4/16/4/16)
-- ~~Keyboard scroll requires click~~ — fixed in entry #14 (focus scrollbar directly, not TextArea)
-- ~~Scroll speed too slow~~ — fixed in entry #13 (dialogue_customization.patch: `vscroll->StepIncrement * 3`)
-- ~~Esc closes dialogue~~ — fixed in entry #15 (InDialog guard in C++)
-
----
-
 ## File Locations
 
 ### On device (`/mnt/mmc/ports/gemrb/`)
@@ -566,7 +603,7 @@ All above changes are in `patches_094/GLES2_shader_fix.patch`, applied by `build
 
 
 raw 2do:
-- fonts differentiation, now dialog font also used in main menu, in items descriptions, notes etc. investigate what types of fonts are in the game and how to control them individually
 - characters blinking (NPCs as well, just blink sometimes, we should investigate.)
 - Videos are playing BLACK.
-- weapons dont change on character if i select them in inventory (i choose kinfe instead of axe, ragdol in inventory changes, but game character in game still holds axe)
+- weapons dont change on character if i select them in inventory (i choose knife instead of axe, ragdoll in inventory changes, but game character in game still holds axe)
+- Dialogue scroll position: when dialogue opens with many options, view auto-scrolls to bottom hiding speaker's text

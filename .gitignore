@@ -2,6 +2,9 @@
 .build/
 engine.zip
 
+# Device-side configs (pulled for reference)
+device/
+
 # Upstream GemRB source (cloned on setup)
 upstream-gemrb/
 
