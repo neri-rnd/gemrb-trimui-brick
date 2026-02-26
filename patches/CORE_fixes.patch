@@ -1,0 +1,53 @@
+--- a/gemrb/core/GUI/GameControl.cpp
++++ b/gemrb/core/GUI/GameControl.cpp
+@@ -1722,9 +1722,15 @@
+ 	if (updateVPTimer && speed) {
+ 		updateVPTimer = false;
+ 		if (center) {
+-			// also account for message window height, since it can cover the center of the window at lowest resolutions
+-			// GlobalTimer does its own centering, so we only offset
+-			p.y += mwinh;
++			if (mwinh < viewport.h) {
++				// Center NPC in the visible strip above the message window
++				// mwinh/2 makes GlobalTimer place the NPC at (viewport.h - mwinh) / 2
++				p.y += mwinh / 2;
++			} else {
++				// Message window covers entire screen — skip pan
++				updateVPTimer = false;
++				return canMove;
++			}
+ 		}
+ 		core->timer.SetMoveViewPort(p, speed, center);
+ 	} else if (canMove && p != viewport.origin) {
+--- a/gemrb/core/GUI/Window.cpp
++++ b/gemrb/core/GUI/Window.cpp
+@@ -24,6 +24,7 @@
+ #include "Interface.h"
+ #include "WindowManager.h"
+
++#include "GUI/GameControl.h"
+ #include "GUI/GUIScriptInterface.h"
+ #include "Logging/Logging.h"
+
+@@ -586,7 +587,9 @@
+ 			if (target == this) {
+ 				// skip the usual dispatch
+ 				// this is so that we can move windows that otherwise ignore events
+-				OnMouseDrag(event.mouse);
++				if (event.mouse.buttonStates) {
++					OnMouseDrag(event.mouse);
++				}
+ 			} else {
+ 				DispatchMouseMotion(target, event.mouse);
+ 			}
+@@ -695,6 +698,10 @@
+ 	}
+
+ 	if (key.keycode == GEM_ESCAPE && mod == 0) {
++		const GameControl* gc = core->GetGameControl();
++		if (gc && gc->InDialog()) {
++			return true; // block Esc during dialogue
++		}
+ 		Close();
+ 		return true;
+ 	}

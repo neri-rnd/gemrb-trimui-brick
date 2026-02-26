@@ -1,0 +1,411 @@
+diff --git a/gemrb/plugins/SDLVideo/GLSLProgram.cpp b/gemrb/plugins/SDLVideo/GLSLProgram.cpp
+index f4bd451..2faba10 100644
+--- a/gemrb/plugins/SDLVideo/GLSLProgram.cpp
++++ b/gemrb/plugins/SDLVideo/GLSLProgram.cpp
+@@ -99,7 +99,8 @@ GLuint GLSLProgram::buildShader(GLenum type, std::string shader_source) const
+ 	shader_source.insert(0, "#version 110\n");
+ #else
+ 	// for GLSL ES 1.00 (GLES 2.0)
+-	shader_source.insert(0, "#version 100\n");
++	// USE_GLES enables the GLES-compatible attribute/uniform path
++	shader_source.insert(0, "#version 100\n#define USE_GLES 1\n");
+ #endif
+ 	GLuint id = glCreateShader(type);
+ 	const char* src = shader_source.c_str();
+@@ -153,6 +154,15 @@ bool GLSLProgram::buildProgram(const std::string& vertexSource, const std::strin
+ 	glAttachShader(program, vertexId);
+ 	glAttachShader(program, fragmentId);
+ 
++#if !USE_OPENGL_API
++	// Bind attributes to match SDL2's GLES2 renderer expected locations.
++	// SDL2 binds: a_position=0, a_color=1, a_texCoord=2 before linking.
++	// We must match these so SDL's vertex data setup works with our shader.
++	glBindAttribLocation(program, 0, "a_position");
++	glBindAttribLocation(program, 1, "a_color");
++	glBindAttribLocation(program, 2, "a_texCoord");
++#endif
++
+ 	glLinkProgram(program);
+ 	GLint result = GL_FALSE;
+ 	glGetProgramiv(program, GL_LINK_STATUS, &result);
+diff --git a/gemrb/plugins/SDLVideo/SDL20Video.cpp b/gemrb/plugins/SDLVideo/SDL20Video.cpp
+index c1330fb..43cb388 100644
+--- a/gemrb/plugins/SDLVideo/SDL20Video.cpp
++++ b/gemrb/plugins/SDLVideo/SDL20Video.cpp
+@@ -231,20 +231,11 @@ int SDL20VideoDriver::CreateSDLDisplay(const char* title, bool vsync)
+ 	scratchBuffer = CreateBuffer(Region(Point(), screenSize), BufferFormat::DISPLAY_ALPHA);
+ 	scratchBuffer->Clear();
+ 
+-	// Try to grab the texture shader program of SDL
+-	static const SDL_Rect r = { 0, 0, 1, 1 };
+-	SDL_RenderCopy(renderer, ScratchBuffer(), &r, &r);
+-	#if SDL_VERSION_ATLEAST(2, 0, 10)
+-	SDL_RenderFlush(renderer);
+-	#endif
+-
+-	GLuint rgbaProgramID = 0;
+-	glGetIntegerv(GL_CURRENT_PROGRAM, reinterpret_cast<GLint*>(&rgbaProgramID));
+-	assert(rgbaProgramID > 0);
+-
+-	// Now, replace this program's shader units
++	// Create our own separate GL program for shaded blits.
++	// We do NOT hijack SDL2's program — that causes stale uniform
++	// locations in SDL2's GLES2 program cache, corrupting rendering.
+ 	this->blitRGBAShader =
+-		GLSLProgram::CreateFromFiles("Shaders/SDLTextureV.glsl", "Shaders/BlitRGBA.glsl", rgbaProgramID);
++		GLSLProgram::CreateFromFiles("Shaders/SDLTextureV.glsl", "Shaders/BlitRGBA.glsl", 0);
+ 	if (!blitRGBAShader) {
+ 		Log(ERROR, "SDL 2 GL Driver", "RGBA shader setup failed: {}", GLSLProgram::GetLastError());
+ 		return GEM_ERROR;
+@@ -305,20 +296,17 @@ VideoBuffer* SDL20VideoDriver::NewVideoBuffer(const Region& r, BufferFormat fmt)
+ 
+ void SDL20VideoDriver::SwapBuffers(VideoBuffers& buffers)
+ {
+-#if USE_OPENGL_BACKEND
+-	// we have coopted SDLs shader, so we need to reset uniforms to values appropriate for the render targets
+-	blitRGBAShader->SetUniformValue("u_greyMode", 1, 0);
+-	blitRGBAShader->SetUniformValue("u_stencil", 1, 0);
+-	blitRGBAShader->SetUniformValue("u_dither", 1, 0);
+-	blitRGBAShader->SetUniformValue("u_rgba", 1, 1);
+-	blitRGBAShader->SetUniformValue("u_brightness", 1, 1);
+-	blitRGBAShader->SetUniformValue("u_contrast", 1, 1);
+-#endif
++	// No uniform resets needed — we use a separate GL program, so
++	// SDL2's own unmodified ABGR texture shader handles compositing
++	// via RenderOnDisplay → SDL_RenderCopy.
+ 
+ 	SDL_SetRenderTarget(renderer, NULL);
+ 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+ 	SDL_RenderClear(renderer);
+ 
++	// No GLES projection set needed — SDL2 manages its own projection
++	// for SDL_RenderCopy since we no longer hijack its program.
++
+ 	VideoBuffers::iterator it;
+ 	it = buffers.begin();
+ 	for (; it != buffers.end(); ++it) {
+@@ -475,13 +463,109 @@ int SDL20VideoDriver::RenderCopyShaded(SDL_Texture* texture, const SDL_Rect* src
+ {
+ #if USE_OPENGL_BACKEND
+ 	#if SDL_VERSION_ATLEAST(2, 0, 10)
+-	SDL_RenderFlush(renderer);
++	SDL_RenderFlush(renderer);  // drain pending SDL commands before GL calls
+ 	#endif
+ 
++	// Save SDL2's GL state before our direct draws.
++	// SDL2 tracks state internally and skips redundant calls. If we
++	// change GL state without restoring it, SDL2's tracking goes stale
++	// and it won't re-bind its own program/blend/textures → black screen.
++	GLint savedProgram = 0;
++	glGetIntegerv(GL_CURRENT_PROGRAM, &savedProgram);
++	GLboolean savedBlend = glIsEnabled(GL_BLEND);
++	GLint savedBlendSrcRGB, savedBlendDstRGB, savedBlendSrcA, savedBlendDstA;
++	glGetIntegerv(GL_BLEND_SRC_RGB, &savedBlendSrcRGB);
++	glGetIntegerv(GL_BLEND_DST_RGB, &savedBlendDstRGB);
++	glGetIntegerv(GL_BLEND_SRC_ALPHA, &savedBlendSrcA);
++	glGetIntegerv(GL_BLEND_DST_ALPHA, &savedBlendDstA);
++	GLint savedActiveTexture;
++	glGetIntegerv(GL_ACTIVE_TEXTURE, &savedActiveTexture);
++	GLint savedTexture0;
++	glActiveTexture(GL_TEXTURE0);
++	glGetIntegerv(GL_TEXTURE_BINDING_2D, &savedTexture0);
++	GLint savedVBO;
++	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &savedVBO);
++	GLint savedViewport[4];
++	glGetIntegerv(GL_VIEWPORT, savedViewport);
++	GLboolean savedScissor = glIsEnabled(GL_SCISSOR_TEST);
++	// Unbind VBO so glVertexAttribPointer uses client-side arrays,
++	// not offsets into SDL2's vertex buffer object.
++	glBindBuffer(GL_ARRAY_BUFFER, 0);
++	// Disable scissor test — SDL2 may have left it enabled from a
++	// previous draw command's clip rect, which would crop our draws.
++	glDisable(GL_SCISSOR_TEST);
++
+ 	uint32_t format = 0;
+-	SDL_QueryTexture(texture, &format, nullptr, nullptr, nullptr);
++	int access = 0;
++	SDL_QueryTexture(texture, &format, &access, nullptr, nullptr);
+ 	blitRGBAShader->Use();
+ 
++	// Render-target textures (FBOs / video buffers) contain GL-native
++	// RGBA data written by previous GL draws — never swap their channels.
++	// SDL2 GLES2 uploads ALL textures as GL_RGBA but doesn't convert
++	// pixel data — it relies on format-specific fragment shaders to
++	// swizzle.  Since we use our own shader, we must swap R↔B for
++	// formats where the packed byte order puts B in the R position:
++	//   XRGB8888 (0xXXRRGGBB) → LE bytes [B,G,R,X] → GL r=B,b=R
++	//   ARGB8888 (0xAARRGGBB) → LE bytes [B,G,R,A] → GL r=B,b=R
++	int swapRB = 0;
++	if (access != SDL_TEXTUREACCESS_TARGET) {
++		swapRB = (format == SDL_PIXELFORMAT_ARGB8888 ||
++		          format == SDL_PIXELFORMAT_XRGB8888 ||
++		          format == SDL_PIXELFORMAT_BGRA8888) ? 1 : 0;
++	}
++	blitRGBAShader->SetUniformValue("u_swapRB", 1, swapRB);
++
++#if USE_GLES_API
++	// Use SDL2's own viewport and scale to compute projection, matching
++	// what SDL2's GLES2 renderer does in SetDrawState. This is more
++	// robust than querying the texture dimensions directly, because
++	// SDL2's viewport accounts for SDL_RenderSetLogicalSize scaling.
++	{
++		SDL_Rect sdlViewport;
++		SDL_RenderGetViewport(renderer, &sdlViewport);
++		float scaleX, scaleY;
++		SDL_RenderGetScale(renderer, &scaleX, &scaleY);
++
++		// Projection uses the logical viewport dimensions (what
++		// SDL_RenderCopyEx uses for its projection).
++		int vpW_i = sdlViewport.w;
++		int vpH_i = sdlViewport.h;
++		float vpW = static_cast<float>(vpW_i);
++		float vpH = static_cast<float>(vpH_i);
++
++		// GL viewport in physical pixels, matching SDL2's SetDrawState.
++		SDL_Texture* target = SDL_GetRenderTarget(renderer);
++		if (target) {
++			glViewport(
++				static_cast<int>(sdlViewport.x * scaleX),
++				static_cast<int>(sdlViewport.y * scaleY),
++				static_cast<int>(sdlViewport.w * scaleX),
++				static_cast<int>(sdlViewport.h * scaleY)
++			);
++		} else {
++			int outW, outH;
++			SDL_GetRendererOutputSize(renderer, &outW, &outH);
++			int physX = static_cast<int>(sdlViewport.x * scaleX);
++			int physW = static_cast<int>(sdlViewport.w * scaleX);
++			int physH = static_cast<int>(sdlViewport.h * scaleY);
++			int physY = outH - static_cast<int>(sdlViewport.y * scaleY) - physH;
++			glViewport(physX, physY, physW, physH);
++		}
++
++		float yScale = (target != nullptr) ? 2.0f / vpH : -2.0f / vpH;
++		float yTrans = (target != nullptr) ? -1.0f : 1.0f;
++		GLfloat projection[4][4] = {
++			{ 2.0f / vpW, 0.0f,   0.0f, 0.0f },
++			{ 0.0f,       yScale, 0.0f, 0.0f },
++			{ 0.0f,       0.0f,   0.0f, 0.0f },
++			{-1.0f,       yTrans, 0.0f, 1.0f }
++		};
++		blitRGBAShader->SetUniformMatrixValue("u_projection", 4, 1, &projection[0][0]);
++	}
++#endif
++
++	// --- Set all shader uniforms ---
+ 	blitRGBAShader->SetUniformValue("s_sprite", 1, 0);
+ 	blitRGBAShader->SetUniformValue("s_stencil", 1, 1);
+ 
+@@ -542,16 +626,6 @@ int SDL20VideoDriver::RenderCopyShaded(SDL_Texture* texture, const SDL_Rect* src
+ 			stencilTexY = -static_cast<GLfloat>(dstrect->y);
+ 		}
+ 
+-	#if !SDL_VERSION_ATLEAST(2, 0, 18)
+-		// In versions earlier, SDL uses a different vertex setup in case
+-		// of flipping: (-w/2, -h/2) to (w/2, h/2) that are transformed by
+-		// the OpenGL backend via matrices.
+-		if (flags & BlitFlags::MIRRORX) {
+-			stencilTexX = dstrect->w / 2.0f + stencilRect.x;
+-			stencilTexY = dstrect->h / 2.0f + stencilRect.y;
+-		}
+-	#endif
+-
+ 		stencilTexW = 1.0f / (static_cast<float>(texW) * scaleX);
+ 		stencilTexH = 1.0f / (static_cast<float>(texH) * scaleY);
+ 
+@@ -563,7 +637,7 @@ int SDL20VideoDriver::RenderCopyShaded(SDL_Texture* texture, const SDL_Rect* src
+ 
+ 		blitRGBAShader->SetUniformMatrixValue("u_stencilMat", 3, 1, reinterpret_cast<GLfloat*>(&mat));
+ 
+-		// Ask OpenGL about the texture handle (that lies hidden in SDL_Texture otherwise)
++		// Get stencil texture's GL handle
+ 		auto curTexture = std::static_pointer_cast<SDLTextureVideoBuffer>(stencilBuffer)->GetTexture();
+ 		SDL_GL_BindTexture(curTexture, nullptr, nullptr);
+ 		GLuint stencilTextureID;
+@@ -573,8 +647,120 @@ int SDL20VideoDriver::RenderCopyShaded(SDL_Texture* texture, const SDL_Rect* src
+ 		glActiveTexture(GL_TEXTURE1);
+ 		glBindTexture(GL_TEXTURE_2D, stencilTextureID);
+ 	}
++
++	// --- Direct GL draw (bypasses SDL_RenderCopyEx entirely) ---
++
++	// Get sprite's GL texture handle and bind to unit 0
++	glActiveTexture(GL_TEXTURE0);
++	float texW = 1.0f, texH = 1.0f;
++	SDL_GL_BindTexture(texture, &texW, &texH);
++
++	// Get texture pixel dimensions for texcoord normalization
++	int tw = 0, th = 0;
++	SDL_QueryTexture(texture, nullptr, nullptr, &tw, &th);
++
++	// Compute normalized texcoords from srcrect
++	float s0 = srcrect->x * texW / tw;
++	float t0 = srcrect->y * texH / th;
++	float s1 = (srcrect->x + srcrect->w) * texW / tw;
++	float t1 = (srcrect->y + srcrect->h) * texH / th;
++
++	// Handle flip flags via texcoord swap
++	if (flags & BlitFlags::MIRRORX) { float tmp = s0; s0 = s1; s1 = tmp; }
++	if (flags & BlitFlags::MIRRORY) { float tmp = t0; t0 = t1; t1 = tmp; }
++
++	// Vertex positions from dstrect
++	float x0 = static_cast<float>(dstrect->x);
++	float y0 = static_cast<float>(dstrect->y);
++	float x1 = static_cast<float>(dstrect->x + dstrect->w);
++	float y1 = static_cast<float>(dstrect->y + dstrect->h);
++
++	// Vertex color from tint/alpha
++	Uint8 r = 0xff, g = 0xff, b = 0xff, a = SDL_ALPHA_OPAQUE;
++	if (flags & BlitFlags::COLOR_MOD) { r = tint->r; g = tint->g; b = tint->b; }
++	if (flags & BlitFlags::ALPHA_MOD) { a = tint->a; }
++	if (flags & BlitFlags::HALFTRANS) { a /= 2; }
++
++	// Build quad as 2 triangles (6 vertices)
++	struct Vertex { float pos[2]; Uint8 col[4]; float tex[2]; };
++	Vertex verts[6] = {
++		{{ x0, y0 }, { r, g, b, a }, { s0, t0 }},
++		{{ x1, y0 }, { r, g, b, a }, { s1, t0 }},
++		{{ x0, y1 }, { r, g, b, a }, { s0, t1 }},
++		{{ x0, y1 }, { r, g, b, a }, { s0, t1 }},
++		{{ x1, y0 }, { r, g, b, a }, { s1, t0 }},
++		{{ x1, y1 }, { r, g, b, a }, { s1, t1 }},
++	};
++
++	// Set up vertex attributes (a_position=0, a_color=1, a_texCoord=2)
++	int stride = sizeof(Vertex);
++	glEnableVertexAttribArray(0);
++	glEnableVertexAttribArray(1);
++	glEnableVertexAttribArray(2);
++	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, &verts[0].pos);
++	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, &verts[0].col);
++	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, &verts[0].tex);
++
++	// Set blend mode via GL
++	if (flags & BlitFlags::ADD) {
++		glEnable(GL_BLEND);
++		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE);
++	} else if (flags & BlitFlags::MOD) {
++		glEnable(GL_BLEND);
++		glBlendFuncSeparate(GL_ZERO, GL_SRC_COLOR, GL_ZERO, GL_ONE);
++	} else if (flags & BlitFlags::MUL) {
++		glEnable(GL_BLEND);
++		glBlendFuncSeparate(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
++	} else if (flags & BlitFlags::SRC) {
++		glEnable(GL_BLEND);
++		glBlendFuncSeparate(GL_SRC_COLOR, GL_ONE, GL_SRC_COLOR, GL_ONE);
++	} else if (flags & BlitFlags::ONE_MINUS_DST) {
++		glEnable(GL_BLEND);
++		glBlendFuncSeparate(GL_ONE_MINUS_DST_COLOR, GL_ONE, GL_ONE_MINUS_DST_COLOR, GL_ONE);
++	} else if (flags & BlitFlags::DST) {
++		glEnable(GL_BLEND);
++		glBlendFuncSeparate(GL_DST_COLOR, GL_ONE, GL_DST_COLOR, GL_ONE);
++	} else if (flags & (BlitFlags::BLENDED | BlitFlags::HALFTRANS)) {
++		glEnable(GL_BLEND);
++		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
++	} else {
++		glDisable(GL_BLEND);
++	}
++
++	glDrawArrays(GL_TRIANGLES, 0, 6);
++
++	// Restore SDL2's GL state so its internal tracking stays valid.
++	// NOTE: Do NOT call glDisableVertexAttribArray — SDL2's GLES2
++	// renderer enables attribs 0/1/2 once at init and never re-enables
++	// them.  Disabling them here kills all subsequent SDL2 draws.
++
++	if (doStencil) {
++		glActiveTexture(GL_TEXTURE1);
++		glBindTexture(GL_TEXTURE_2D, 0);
++	}
++
++	glActiveTexture(GL_TEXTURE0);
++	glBindTexture(GL_TEXTURE_2D, savedTexture0);
++
++	if (savedBlend) {
++		glEnable(GL_BLEND);
++	} else {
++		glDisable(GL_BLEND);
++	}
++	glBlendFuncSeparate(savedBlendSrcRGB, savedBlendDstRGB, savedBlendSrcA, savedBlendDstA);
++
++	glActiveTexture(savedActiveTexture);
++	glBindBuffer(GL_ARRAY_BUFFER, savedVBO);
++	glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
++	if (savedScissor) {
++		glEnable(GL_SCISSOR_TEST);
++	}
++	glUseProgram(savedProgram);
++
++	return 0;
+ #endif
+ 
++	// Non-GL fallback path (unchanged)
+ 	Uint8 alpha = SDL_ALPHA_OPAQUE;
+ 	if (flags & BlitFlags::ALPHA_MOD) {
+ 		alpha = tint->a;
+diff --git a/gemrb/plugins/SDLVideo/Shaders/BlitRGBA.glsl b/gemrb/plugins/SDLVideo/Shaders/BlitRGBA.glsl
+index 91ac09f..77a6e1d 100644
+--- a/gemrb/plugins/SDLVideo/Shaders/BlitRGBA.glsl
++++ b/gemrb/plugins/SDLVideo/Shaders/BlitRGBA.glsl
+@@ -11,12 +11,20 @@ uniform int u_channel;
+ uniform int u_stencil;
+ uniform int u_dither;
+ uniform int u_rgba;
++uniform int u_swapRB;
++#ifndef USE_GLES
+ uniform float u_brightness;
+ uniform float u_contrast;
++#endif
+ 
+ void main() {
+-	vec4 color = texture2D(s_sprite, v_texCoord) * v_color;
++	vec4 texel = texture2D(s_sprite, v_texCoord);
++	if (u_swapRB == 1) {
++		texel.rb = texel.br;
++	}
++	vec4 color = texel * v_color;
+ 
++#ifndef USE_GLES
+ 	// Additive Brightness
+ 	color.rgb += (u_brightness-1.0);
+ 	// Originals call the second parameter "Contrast" in UI and "Gamma Correction" in inis.
+@@ -30,6 +38,7 @@ void main() {
+ //	color.rgb = pow(color.rgb, vec3(1.0 / u_contrast));
+ 	// Actual contrast correction example.
+ //	color.rgb = ((color.rgb - 0.5) * max(u_contrast, 0.0)) + 0.5;
++#endif
+ 
+ 	gl_FragColor = color;
+ 	if (u_rgba == 0) {
+diff --git a/gemrb/plugins/SDLVideo/Shaders/SDLTextureV.glsl b/gemrb/plugins/SDLVideo/Shaders/SDLTextureV.glsl
+index 6b58a34..8986564 100644
+--- a/gemrb/plugins/SDLVideo/Shaders/SDLTextureV.glsl
++++ b/gemrb/plugins/SDLVideo/Shaders/SDLTextureV.glsl
+@@ -1,3 +1,11 @@
++#ifdef USE_GLES
++precision highp float;
++attribute vec2 a_position;
++attribute vec4 a_color;
++attribute vec2 a_texCoord;
++uniform mat4 u_projection;
++#endif
++
+ varying vec4 v_color;
+ varying vec2 v_texCoord;
+ varying vec2 v_stencilCoord;
+@@ -6,8 +14,15 @@ uniform mat3 u_stencilMat;
+ 
+ void main()
+ {
++#ifdef USE_GLES
++	gl_Position = u_projection * vec4(a_position, 0.0, 1.0);
++	v_color = a_color;
++	v_texCoord = a_texCoord;
++	v_stencilCoord = (u_stencilMat * vec3(a_position, 1.0)).xy;
++#else
+ 	gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+ 	v_color = gl_Color;
+ 	v_texCoord = vec2(gl_MultiTexCoord0);
+ 	v_stencilCoord = (u_stencilMat * vec3(gl_Vertex.xy, 1.0)).xy;
++#endif
+ }

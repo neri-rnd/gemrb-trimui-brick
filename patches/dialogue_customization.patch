@@ -1,0 +1,192 @@
+diff --git a/gemrb/GUIScripts/GUIClasses.py b/gemrb/GUIScripts/GUIClasses.py
+index a7eea21..2ad253d 100644
+--- a/gemrb/GUIScripts/GUIClasses.py
++++ b/gemrb/GUIScripts/GUIClasses.py
+@@ -301,6 +301,8 @@ class GTextArea(GControl, Scrollable):
+ 	methods = {
+ 		'SetChapterText': _GemRB.TextArea_SetChapterText,
+ 		'Append': _GemRB.TextArea_Append,
++		'SetMargins': _GemRB.TextArea_SetMargins,
++		'GetScrollBar': _GemRB.TextArea_GetScrollBar,
+ 	}
+ 	__slots__ = ['DefaultText']
+ 
+diff --git a/gemrb/core/DisplayMessage.cpp b/gemrb/core/DisplayMessage.cpp
+index deeb10e..75700af 100644
+--- a/gemrb/core/DisplayMessage.cpp
++++ b/gemrb/core/DisplayMessage.cpp
+@@ -36,11 +36,11 @@ namespace GemRB {
+ 
+ GEM_EXPORT DisplayMessage* displaymsg = nullptr;
+ 
+-static const auto DisplayFormatName = u"[color={:08X}]{} - [/color][p][color={:08X}]{}[/color][/p]";
+-static const auto DisplayFormatAction = u"[color={:08X}]{} - [/color][p][color={:08X}]{} {}[/color][/p]";
++static const auto DisplayFormatName = u"[color={:08X}]{}:\n[/color][p][color={:08X}]{}[/color][/p]";
++static const auto DisplayFormatAction = u"[color={:08X}]{}:\n[/color][p][color={:08X}]{} {}[/color][/p]";
+ static const auto DisplayFormat = u"[p][color={:08X}]{}[/color][/p]";
+ static const auto DisplayFormatValue = u"[p][color={:08X}]{}: {}[/color][/p]";
+-static const auto DisplayFormatNameString = u"[color={:08X}]{} - [/color][p][color={:08X}]{}: {}[/color][/p]";
++static const auto DisplayFormatNameString = u"[color={:08X}]{}:\n[/color][p][color={:08X}]{}: {}[/color][/p]";
+ static const auto DisplayFormatSimple = u"[p]{}[/p]";
+ 
+ DisplayMessage::StrRefs DisplayMessage::SRefs;
+diff --git a/gemrb/core/GUI/ScrollView.cpp b/gemrb/core/GUI/ScrollView.cpp
+index 59494e8..22155aa 100644
+--- a/gemrb/core/GUI/ScrollView.cpp
++++ b/gemrb/core/GUI/ScrollView.cpp
+@@ -368,8 +368,7 @@ void ScrollView::ScrollTo(Point newP, ieDword duration)
+ 
+ bool ScrollView::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
+ {
+-	// TODO: get scroll amount from settings
+-	int amount = 10;
++	int amount = (vscroll) ? vscroll->StepIncrement * 3 : 30;
+ 	Point scroll;
+ 	switch (key.keycode) {
+ 		case GEM_UP:
+diff --git a/gemrb/core/GUI/ScrollView.h b/gemrb/core/GUI/ScrollView.h
+index 9bfb9d8..e9986d6 100644
+--- a/gemrb/core/GUI/ScrollView.h
++++ b/gemrb/core/GUI/ScrollView.h
+@@ -75,6 +75,7 @@ public:
+ 
+ 	void SetVScroll(ScrollBar* sb);
+ 	void SetHScroll(ScrollBar* sb);
++	ScrollBar* GetVScroll() const { return vscroll; }
+ 
+ 	bool IsAnimated() const override { return static_cast<bool>(animation); }
+ 
+diff --git a/gemrb/core/GUI/TextArea.cpp b/gemrb/core/GUI/TextArea.cpp
+index c94f9bb..0aa7ecf 100644
+--- a/gemrb/core/GUI/TextArea.cpp
++++ b/gemrb/core/GUI/TextArea.cpp
+@@ -41,7 +41,7 @@ TextArea::SpanSelector::SpanSelector(TextArea& ta, const std::vector<const Strin
+ 	SetMargin(m);
+ 
+ 	Size flexFrame(-1, 0); // flex frame for hanging indent after optnum
+-	int numWidth = int(ta.ftext->StringSizeWidth(fmt::format(u"{}. - ", opts.size()), 0)) + 3; // good guess at max width
++	int numWidth = int(ta.ftext->StringSizeWidth(fmt::format(u"{}. ", opts.size()), 0)) + 3; // good guess at max width
+ 	Size numFrame(numWidth, ta.ftext->LineHeight); // size for the numerical prefix so they stay aligned
+ 	Point origin(margin.left, margin.top);
+ 	Region r(origin, Dimensions());
+@@ -58,7 +58,7 @@ TextArea::SpanSelector::SpanSelector(TextArea& ta, const std::vector<const Strin
+ 		if (numbered) {
+ 			// TODO: as per the original PALETTE_SELECTED should be updated to the PC color (same color their name is rendered in)
+ 			// but that should probably actually be done by the dialog handler, not here.
+-			auto ts = new TextSpan(fmt::format(u"{}. - ", i + 1), nullptr, selectedCol, &numFrame);
++			auto ts = new TextSpan(fmt::format(u"{}. ", i + 1), nullptr, selectedCol, &numFrame);
+ 			ts->Alignment = IE_FONT_ALIGN_RIGHT;
+ 			selOption->AppendContent(ts);
+ 		}
+@@ -292,6 +292,11 @@ void TextArea::SetMargins(ContentContainer::Margin m)
+ 		textContainer->SetMargin(textMargins);
+ }
+ 
++ScrollBar* TextArea::GetScrollBar() const
++{
++	return scrollview.GetVScroll();
++}
++
+ int TextArea::LineCount() const
+ {
+ 	int rowHeight = LineHeight();
+@@ -700,10 +705,14 @@ void TextArea::SetSelectOptions(const std::vector<SelectOption>& opts, bool numb
+ 	ContentContainer::Margin m;
+ 	Option_t selectIdx = -1;
+ 	if (dialogBeginNode) {
+-		if (speakerPic)
++		// Use textMargins if they've been set, otherwise use defaults
++		if (textMargins.left > 0 || textMargins.right > 0) {
++			m = textMargins;
++		} else if (speakerPic) {
+ 			m = ContentContainer::Margin(10, 20);
+-		else
+-			m = ContentContainer::Margin(LineHeight(), 40, 10);
++		} else {
++			m = ContentContainer::Margin(LineHeight(), 5, 10);
++		}
+ 	} else if (LineCount() > 0) {
+ 		m = ContentContainer::Margin(0, 3);
+ 		selectIdx = GetValue();
+diff --git a/gemrb/core/GUI/TextArea.h b/gemrb/core/GUI/TextArea.h
+index 6f20a00..c166e2b 100644
+--- a/gemrb/core/GUI/TextArea.h
++++ b/gemrb/core/GUI/TextArea.h
+@@ -178,6 +178,7 @@ public:
+ 
+ 	ContentContainer::Margin GetMargins() const;
+ 	void SetMargins(ContentContainer::Margin m);
++	ScrollBar* GetScrollBar() const;
+ 
+ 	/** Returns the selected text */
+ 	String QueryText() const override;
+diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
+index f6b14d1..d70edd5 100644
+--- a/gemrb/plugins/GUIScript/GUIScript.cpp
++++ b/gemrb/plugins/GUIScript/GUIScript.cpp
+@@ -4721,6 +4721,56 @@ static PyObject* GemRB_TextArea_SetOptions(PyObject* self, PyObject* args)
+ 	Py_RETURN_NONE;
+ }
+ 
++PyDoc_STRVAR(GemRB_TextArea_SetMargins__doc,
++	     "===== TextArea_SetMargins =====\n\
++\n\
++**Metaclass Prototype:** SetMargins (top, right, bottom, left)\n\
++\n\
++**Description:** Sets the text content margins for a TextArea.\n\
++\n\
++**Parameters:** \n\
++  * top - top margin in pixels\n\
++  * right - right margin in pixels\n\
++  * bottom - bottom margin in pixels\n\
++  * left - left margin in pixels\n\
++\n\
++**Return value:** N/A");
++
++static PyObject* GemRB_TextArea_SetMargins(PyObject* self, PyObject* args)
++{
++	int top, right, bottom, left;
++	PARSE_ARGS(args, "Oiiii", &self, &top, &right, &bottom, &left);
++	TextArea* ta = GetView<TextArea>(self);
++	ABORT_IF_NULL(ta);
++	ta->SetMargins(ContentContainer::Margin(top, right, bottom, left));
++	Py_RETURN_NONE;
++}
++
++PyDoc_STRVAR(GemRB_TextArea_GetScrollBar__doc,
++	     "===== TextArea_GetScrollBar =====\n\
++\n\
++**Metaclass Prototype:** GetScrollBar ()\n\
++\n\
++**Description:** Returns the vertical scrollbar attached to this TextArea, or None.\n\
++\n\
++**Return value:** GScrollBar or None");
++
++static PyObject* GemRB_TextArea_GetScrollBar(PyObject* self, PyObject* args)
++{
++	PARSE_ARGS(args, "O", &self);
++	TextArea* ta = GetView<TextArea>(self);
++	ABORT_IF_NULL(ta);
++
++	ScrollBar* sb = ta->GetScrollBar();
++	if (sb) {
++		const auto* ref = sb->GetScriptingRef();
++		if (ref) {
++			return gs->ConstructObjectForScriptable(ref);
++		}
++	}
++	Py_RETURN_NONE;
++}
++
+ PyDoc_STRVAR(GemRB_GetPartySize__doc,
+ 	     "===== GetPartySize =====\n\
+ \n\
+@@ -13003,6 +13053,8 @@ static PyMethodDef GemRBInternalMethods[] = {
+ 	METHOD(TextArea_Append, METH_VARARGS),
+ 	METHOD(TextArea_ListResources, METH_VARARGS),
+ 	METHOD(TextArea_SetChapterText, METH_VARARGS),
++	METHOD(TextArea_GetScrollBar, METH_VARARGS),
++	METHOD(TextArea_SetMargins, METH_VARARGS),
+ 	METHOD(TextArea_SetOptions, METH_VARARGS),
+ 	METHOD(TextEdit_SetBufferLength, METH_VARARGS),
+ 	METHOD(View_AddAlias, METH_VARARGS),

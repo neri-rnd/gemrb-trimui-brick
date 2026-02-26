@@ -1,0 +1,572 @@
+# GemRB on TrimUI Brick — Changelog
+
+All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick handheld (MuOS, A133 SoC, PowerVR GE8300 GPU, 1024x768 display).
+
+---
+
+# Phase 3: GemRB Master (bc6e075) + gptokeyb (current)
+
+Upgraded to upstream master (commit bc6e075). Same GLES2 shader approach as Phase 2. Switched from SDL Controller API back to gptokeyb for input — TrimUI Brick has no analog sticks, so master's native GamepadControl (which requires sticks for cursor movement) doesn't work.
+
+Build: `gemrb-fix/build_gemrb_master.sh` → `engine_master.zip`
+Patches: `gemrb-fix/patches_master/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization)
+Custom scripts: `gemrb-fix/custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py)
+
+---
+
+## 24. Fix Dialogue Window Flash When Opening/Closing Chests
+
+**Problem:** When opening or closing a chest (container), the custom dialogue window (dark 288px overlay) briefly flashed on screen for 1-2 frames.
+
+**Root cause:** The shared `Container.py` calls `GemRB.GetView("MSGWIN").SetVisible(True)` when closing a container, to restore the message window. In upstream PST, MSGWIN is a small 192px window — the brief flash is unnoticeable. In our custom PST, MSGWIN is permanently styled as a 288px dark semi-transparent overlay (set in `MessageWindow.py:OnLoad()`). `Window::Close()` without `DestroyOnClose` just calls `SetVisible(false)` (Window.cpp:63), so Container.py's `SetVisible(True)` directly reverses it, making the full dialogue overlay flash visible. `GUICommonWindows.py:487,540` already guard MSGWIN visibility with `if not IsPST()` — Container.py was the only place missing this guard.
+
+**Fix (Container.py, Python-only):**
+- Created PST-specific `Container.py` override in `custom_scripts/pst/` (GemRB's Python path puts `GUIScripts/pst/` before `GUIScripts/`, so it shadows the shared version)
+- Removed `MSGWIN.SetVisible(False)` from `OpenContainerWindow()` — redundant, MSGWIN already Close()'d by UpdateControlStatus
+- Removed `MSGWIN.SetVisible(True)` from `CloseContainerWindow()` — this was the flash. MSGWIN stays hidden until `UpdateControlStatus()` shows it for actual dialogue via `MWindow.Focus()`
+- ACTWIN hide/show during container kept (correct behavior)
+
+---
+
+## 23. Fix Portrait Selection Outline When Cycling PCs in Float Menu
+
+**Problem:** When cycling through party members via the float menu's portrait button, the green selection outline in the bottom portrait bar didn't update — it stayed on the previously selected PC.
+
+**Root cause:** GemRB has two separate PC selection mechanisms: `game->selected` (multi-select vector, updated by `GameSelectPC`) and `game->SelectedSingle` (single-focus int, updated only by `GameSelectPCSingle`). The portrait outline checks `SelectedSingle` when `SelectionChangeHandler` is active (float menu open). `FloatMenuSelectNextPC` and `FloatMenuSelectPreviousPC` only called `GameSelectPC` — never updating `SelectedSingle`. Compare: `PortraitButtonOnPress` (GUICommonWindows.py:639) correctly calls `GameSelectPCSingle` when a handler is set.
+
+**Fix (FloatMenuWindow.py, Python-only):**
+- Added `GemRB.GameSelectPCSingle(pc)` before `GameSelectPC` in both `FloatMenuSelectNextPC` and `FloatMenuSelectPreviousPC`
+- `SelectedSingle` is set BEFORE `GameSelectPC` fires `EF_SELECTION` → `SelectionChanged()` → `UpdatePortraitWindow()`, so the outline reads the correct value
+
+---
+
+## 22. Hide Health Bars for Empty Party Slots
+
+**Problem:** Health bars (FILLBAR BAM) were visible for all 6 portrait slots, even when no party member occupied the slot. Only TNO is present at game start, but slots 2-6 showed empty green bars.
+
+**Root cause:** `UpdatePortraitButton()` in `PortraitWindow.py` hides the portrait button (`SetVisible(False)`) for empty slots and returns early, but the health bar is a separate control (ID = `6 + ControlID`) that was never hidden.
+
+**Fix (PortraitWindow.py, Python-only):**
+- Added `ButtonHP.SetVisible(False)` in the empty-slot early-return block
+- Added `ButtonHP.SetVisible(True)` in the occupied-slot path (ensures bar reappears when a new party member joins)
+
+---
+
+## 21. Float Menu Item Use — Reliability Fixes
+
+**Problem:** Using items from the radial float menu had three reliability issues:
+1. Targeting sometimes didn't trigger when clicking a target (multi-select: `ACT_CAST` requires `game->selected.size() == 1`)
+2. With multiple PCs selected, bandage applied to self instead of clicked target
+3. Misleading "cast" cursor appeared when entering the items sub-menu before any item was selected
+
+**Root causes:**
+- `FloatMenuSelectItems()` called `GameControlSetTargetMode(TARGET_MODE_CAST)` on sub-menu entry — before any item was selected. For TARGET_SELF items this showed a confusing cast cursor; for TARGET_CREA items it was redundant (UseItem sets it via C++ `SetupItemUse`)
+- C++ `PerformActionOn` ACT_CAST path requires exactly 1 selected PC. Float menu can be opened in group mode with multiple PCs selected
+
+**Fix (FloatMenuWindow.py, Python-only):**
+- Removed premature `GameControlSetTargetMode(TARGET_MODE_CAST)` from `FloatMenuSelectItems()` — targeting mode now set by `UseItem` → C++ `SetupItemUse` only when an actual item is selected
+- Added `GameSelectPC(pc, 1, SELECT_REPLACE | SELECT_QUIET)` in `UseItemDirect()` — narrows selection to the acting PC before `UseItem`, ensuring `game->selected.size() == 1` for the C++ ACT_CAST targeting path
+- Added `if not pc: return` guard to prevent `GameSelectPC(0, ...)` which would select ALL PCs
+
+---
+
+## 20. Continue Button — Full-Width Click Area ⚠️ TO BE VALIDATED
+
+**Problem:** The Close/Continue button at the bottom of the dialogue window was resized from 64x64 (CHU default) to 640x28 via `SetFrame()`, but the BAM sprite highlight still rendered at the original 64px size in the left corner. `Button::HitTest` also checked the small BAM sprite's pixel transparency, so clicks outside the ~64px area were ignored.
+
+**Fix (MessageWindow.py, Python-only):**
+- `SetSprites("", ...)` — clears all 4 BAM images → no corner highlight, full 640x28 frame clickable
+- `SetBackground({'r':35,'g':35,'b':45,'a':200})` — subtle dark bar (slightly more opaque than MWindow's `a=144`)
+- `SetColor({'r':180,'g':200,'b':220,'a':255})` — soft blue-white text matching dialogue theme
+- `PushOffset` text shift on press still provides tactile feedback
+
+---
+
+## 19. Dialogue Window Resize — 60% Screen Height + 18px Font
+
+**Fix (MessageWindow.py + fonts.2da, Python-only / data):**
+- Window height: 480px → **288px** (60% of 480 — visible game strip: 192px above dialogue)
+- Font: Literata 22px → **18px** (better fit for smaller window)
+- Viewport pan (entry #17) centers NPC in the 192px visible strip (`mwinh/2 = 144` offset)
+
+---
+
+## 18. Fullscreen Dialogue Window
+
+**Problem:** With the dialogue window at 424/480px, a 56px game world strip was visible above it. The viewport pan (entry #17) centered the NPC in this strip, but it was too thin to be useful and the map was distractingly visible through the semi-transparent background.
+
+**Fix (MessageWindow.py, Python-only):**
+- Window height: 424px → **480px** (fullscreen)
+- Background alpha: 180 → **144** (20% more transparent — game world visible as atmosphere behind dialogue)
+- Viewport pan is automatically suppressed (entry #17: `mwinh >= viewport.h` → skip pan)
+
+---
+
+## 17. Fix Viewport Pan During Dialogue (C++)
+
+**Problem:** When dialogue opens, `DialogHandler` calls `gc->MoveViewportTo(tgt->Pos, true, DIALOG_MOVE_SPEED)` to pan the viewport and center the NPC on screen. The centering formula `p.y += mwinh` (offset by full message window height) was designed for a ~192px window. With our 424px window, this pushed the NPC **184px above the top of the screen** — completely invisible. The animated pan (~500ms) caused the map to visibly scroll behind the dialogue window.
+
+**Root cause:** `p.y += mwinh` is a linear offset. GlobalTimer then subtracts `viewport.h/2` to center. For a 192px window: NPC at y=48 (fine). For a 424px window: NPC at y=-184 (off-screen). The correct offset is `mwinh/2`, which places the NPC at `(viewport.h - mwinh) / 2` — the exact center of the visible strip for any window height.
+
+**Fix (`CORE_fixes.patch`, `GameControl::MoveViewportTo()` line 1722):**
+```cpp
+if (center && mwinh < viewport.h) {
+    p.y += mwinh / 2;  // center NPC in visible strip
+    core->timer.SetMoveViewPort(p, speed, center);
+} else if (center) {
+    // fullscreen window — skip pan entirely
+    updateVPTimer = false;
+    return canMove;
+} else {
+    core->timer.SetMoveViewPort(p, speed, center);
+}
+```
+
+**Patch:** `patches_master/CORE_fixes.patch` (now 4 hunks: viewport centering, GameControl.h include, buttonStates guard, InDialog guard)
+
+---
+
+## 16. Build System — Custom Script Overlay
+
+**Problem:** Every engine rebuild (`build_gemrb_master.sh`) replaces `engine/GUIScripts/pst/` with fresh upstream Python scripts, wiping our custom `MessageWindow.py` and `FloatMenuWindow.py`. These are full file replacements (not diffable patches) so a C++ patch approach doesn't apply.
+
+**Fix:** Added `custom_scripts/pst/` directory to the project. The build script mounts it read-only into Docker and copies the files over the upstream versions right before packaging the zip:
+
+```
+-v "$SCRIPT_DIR/custom_scripts:/workspace/custom_scripts:ro"
+```
+```bash
+cp /workspace/custom_scripts/pst/*.py /workspace/gemrb/build/engine/engine/GUIScripts/pst/
+```
+
+**Files:**
+- `gemrb-fix/custom_scripts/pst/MessageWindow.py` — dialogue layout overhaul + OnClose safety net
+- `gemrb-fix/custom_scripts/pst/FloatMenuWindow.py` — null-on-close crash fix
+- `gemrb-fix/build_gemrb_master.sh` — added volume mount + copy step
+
+**To add more custom scripts:** drop them in `custom_scripts/pst/` — next build picks them up automatically.
+
+---
+
+## 15. Block Esc During Dialogue (C++ + Python)
+
+**Problem:** Our custom `MessageWindow.py` clears `IE_GUI_VIEW_IGNORE_EVENTS` on MWindow during dialogue to enable keyboard scrolling (entry #9). In upstream, that flag is never cleared — it stays set permanently, so `Window::OnKeyPress` returns early at the `IgnoreEvents` check and Esc never reaches `Close()`. By clearing the flag for scroll support, we inadvertently allowed Esc (B button via gptokeyb) to close the dialogue window mid-conversation — hiding all UI and leaving the game stuck.
+
+**Fix (two layers):**
+
+**C++ — `CORE_fixes.patch` (Window.cpp `OnKeyPress`):** Before calling `Close()`, check `GameControl::InDialog()`:
+```cpp
+if (key.keycode == GEM_ESCAPE && mod == 0) {
+    const GameControl* gc = core->GetGameControl();
+    if (gc && gc->InDialog()) {
+        return true; // swallow Esc, don't close
+    }
+    Close();
+    return true;
+}
+```
+`GameControl::InDialog()` returns `DialogueFlags & DF_IN_DIALOG` — the proper upstream API for checking dialogue state.
+
+**Python — `MessageWindow.py` (safety net):** `MWindow.OnClose(OnDialogWindowClose)` restores NOT_DLG windows (portrait/action/options bars) if MWindow somehow closes during dialogue through any unanticipated path.
+
+**Patch:** `patches_master/CORE_fixes.patch` (3 hunks: GameControl.h include, buttonStates guard, InDialog guard)
+
+---
+
+## 13. Dialogue Customization Patch — Expose UI Controls to Python
+
+**Problem:** Four things were hardcoded in C++ with no Python access, blocking full dialogue UI customization on the handheld:
+1. TextArea margins — `SetMargins()` existed in C++ but had no Python binding
+2. Dialogue option margins — hardcoded `Margin(LineHeight(), 40, 10)` wasted 80px horizontal space
+3. Speaker name format — `"Name - [p]text[/p]"` confined text to remaining width after name
+4. Option number prefix — `"1. - "` wasted ~20px per line
+5. Scrollbar — attached at CHU load, no Python access to hide/resize it
+
+**Fix (C++ patch, 6 files):**
+
+| File | Change |
+|------|--------|
+| `GUIScript.cpp` | New `TextArea_SetMargins(top,right,bottom,left)` + `TextArea_GetScrollBar()` Python bindings |
+| `GUIClasses.py` | Added `SetMargins` + `GetScrollBar` to `GTextArea.methods` |
+| `TextArea.cpp` | Option margins respect `textMargins` if set; compact prefix `"1."` instead of `"1. - "`; `GetScrollBar()` impl |
+| `TextArea.h` | Added `GetScrollBar()` declaration |
+| `ScrollView.h` | Added `GetVScroll()` public getter (1 line) |
+| `DisplayMessage.cpp` | Speaker name format `"Name:\n[p]text"` — name on own line, full-width text below |
+
+**What's now Python-controllable (no recompile to tweak):**
+- TextArea margins: `MessageTA.SetMargins(top, right, bottom, left)`
+- Scrollbar: `MessageTA.GetScrollBar().SetVisible(False)` or `.SetFrame()` to resize
+- Continue button (control 0): `GetControl(0).SetFrame()` / `.SetText()` — already worked
+- Gold counter (control 0x10000003): `GetControl(0x10000003).SetFrame()` — already worked
+
+**Patch:** `patches_master/dialogue_customization.patch`
+
+---
+
+## 14. Dialogue Window Layout Overhaul (Python)
+
+**Problem:** Stock CHU window 7 is 640x192 (bottom 40%) with a MOS bitmap background that can't resize. On the handheld, text is tiny (BAM 14px), options are red-on-blue (low contrast), and the portrait/action bars overlap when the window is enlarged.
+
+**CHU control positions (debug dump):**
+```
+MWindow:    x=0   y=288  w=640  h=192
+TextArea:   x=63  y=13   w=502  h=168
+CloseBtn:   x=568 y=118  w=64   h=64
+GoldLabel:  x=577 y=42   w=46   h=21
+ScrollBar:  x=484 y=4    w=0    h=156
+```
+
+**Fix (MessageWindow.py, Python-only):**
+- Window: 640x288 (60% height) with dark semi-transparent fill (`SetBackground({'r':0,'g':0,'b':0,'a':144})`)
+- TextArea: near full-width (632px), custom margins via `SetMargins(4,16,4,16)`
+- Close/Continue button: reshaped from 64x64 corner to 640x28 full-width bar at bottom
+- Gold counter: moved to compact 56x18 top-right
+- Scrollbar: repositioned via `GetScrollBar().SetFrame()` (8px wide, right-aligned)
+- Colors: light grey NPC text, soft blue options, warm yellow hover on dark background
+- Hide NOT_DLG windows (portrait bar, action bar, options bar) during dialogue via `IE_GUI_VIEW_INVISIBLE` flag — fixes z-index overlap
+- Re-enable keyboard scrolling: clear `IE_GUI_VIEW_IGNORE_EVENTS`, focus TextArea
+
+**Font override (fonts.2da):**
+- Dialogue font switched from BAM `FONTDLG` 14px to TTF `Literata` 18px
+- Rows 0 and 8 both pointed to Literata (both share RESREF `FONTDLG`, row 8 overwrites row 0)
+- `Literata.ttf` placed in `games/pst/override/` (not `fonts/` — FAT32 `DirectoryIterator` bug causes `CustomFontPath` to report "Empty directory")
+- **Gotcha:** `fonts.2da` must exist in BOTH `games/pst/override/` (takes priority in GemRB resource lookup) AND `engine/unhardcoded/pst/` — the override copy wins, so editing only the engine copy has no effect
+
+**Files on device:**
+- `/mnt/mmc/ports/gemrb/engine/GUIScripts/pst/MessageWindow.py`
+- `/mnt/mmc/ports/gemrb/engine/unhardcoded/pst/fonts.2da`
+- `/mnt/mmc/ports/gemrb/games/pst/override/Literata.ttf`
+
+---
+
+## 12. Switch to gptokeyb for Controls
+
+**Problem:** Master's `USE_SDL_CONTROLLER_API=ON` provides native GamepadControl with analog stick cursor, dead zones, and DPad soft keyboard. But TrimUI Brick has no analog sticks — no cursor movement at all. Button mappings are hardcoded in C++ with no config-file remapping.
+
+**Fix:** Set `USE_SDL_CONTROLLER_API=OFF` in CMake. Re-enabled gptokeyb in launch script (`GemRB.sh`). All input goes through gptokeyb translating D-pad to mouse and buttons to keyboard, configured via `gemrb.gptk`.
+
+**Files:**
+- `gemrb-fix/build_gemrb_master.sh` — `-DUSE_SDL_CONTROLLER_API="OFF"`
+- `/mnt/mmc/ROMS/Ports/GemRB.sh` — uncommented `$GPTOKEYB "gemrb" -c "${GPTOKEYB_CFG}" textinput &`
+- `/mnt/mmc/ports/gemrb/gemrb.gptk` — `dpad_mouse_step=10` (2x default of 5), `mouse_delay=16`. Note: `mouse_scale` only affects analog sticks, not D-pad.
+
+---
+
+## 11. GemRB Master Upgrade — OnMouseDrag Crash Fix
+
+**Problem:** GemRB master crashes on launch with `assert(me.buttonStates)` at `Window.cpp:676`. Mouse motion events (from gptokeyb D-pad→mouse translation) call `OnMouseDrag` in the `MouseMove` case of `Window::DispatchEvent`, but `OnMouseDrag` asserts that a mouse button is held. Any cursor movement without a button pressed triggers the crash.
+
+**File:** `Window.cpp:589` (in `DispatchEvent`, case `Event::MouseMove`)
+
+**Fix:** Guard `OnMouseDrag` with a `buttonStates` check — only call it when a button is actually pressed:
+```cpp
+if (target == this) {
+    if (event.mouse.buttonStates) {
+        OnMouseDrag(event.mouse);
+    }
+}
+```
+
+**Patch:** `patches_master/CORE_fixes.patch`
+
+---
+
+# Phase 2: GemRB v0.9.4 + Custom GLES2 Renderer (archived)
+
+Rebuilt from upstream v0.9.4. Uses system SDL2 2.30. All rendering goes through a custom GLES2 shader program with direct GL draws — no more SDL2 shader hijacking or bundled SDL2. Superseded by Phase 3 (master) but kept for reference.
+
+Build: `gemrb-fix/build_gemrb_094.sh` → `engine_094_vanilla.zip`
+Patches: `gemrb-fix/patches_094/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix)
+
+---
+
+## 10. GemRB v0.9.4 Upgrade — GLES2 Rendering Overhaul
+
+**Problem:** GemRB v0.9.2 (previous) had limited GLES2 support. Upgrading to v0.9.4 introduced a fundamentally new shader pipeline that required significant fixes to work on the PowerVR GE8300 GLES2 renderer.
+
+**Build:** `gemrb-fix/build_gemrb_094.sh` — applies three patches from `patches_094/` to upstream v0.9.4, cross-compiles via PortMaster Docker image.
+
+---
+
+# Phase 1: GemRB v0.9.2 + Bundled SDL2 2.26.5 (archived)
+
+Used GemRB v0.9.2 with a bundled older SDL2 to work around GLES2 compositor bugs. Superseded by Phase 2 but kept for reference.
+
+---
+
+## 1. Bundle SDL2 2.26.5 — Fix Black Circles Around Characters
+
+**Problem:** MuOS ships SDL2 2.30 system-wide. It has a broken `SDL_ComposeCustomBlendMode` fallback for fog of war on GLES2, causing black circles around all characters in GemRB. SDL2 2.26 doesn't have this bug.
+
+**Solution:** Bundle SDL2 2.26.5 (from JohnnyonFlame's `release-2.26.5` branch with PVR GE8300 mali-fbdev patches) in GemRB's `lib/` directory. The launch script sets `LD_LIBRARY_PATH` to pick it up instead of the system SDL2.
+
+**Build:** `gemrb-fix/build_sdl2.sh` — uses PortMaster Docker image (`ghcr.io/monkeyx-net/portmaster-build-templates/portmaster-builder:aarch64-latest`)
+
+**Output:** `libSDL2-2.0.so.0.2600.5` (1.7MB aarch64) deployed as `/mnt/mmc/ports/gemrb/lib/libSDL2-2.0.so.0`
+
+**Note:** A GLES2 shader fix (`GLES2_shader_fix.patch`) was attempted first but FAILED — it caused rendering corruption (flipped, blinking, black). The shader hijack approach was fundamentally fragile. Bundling SDL2 2.26 was the working solution.
+
+---
+
+## 2. Screen Offset Fix in SDL2 mali-fbdev Driver
+
+**Problem:** The original PVR GE8300 patch hardcoded window size to 1280x720 and passed NULL to `eglCreateWindowSurface`. EGL created a surface at unknown default size, causing viewport mismatch — content shifted to bottom-right with black bars.
+
+**Files:**
+- `sdl2-2.26.5-mali/src/video/mali-fbdev/SDL_malivideo.c` — Read actual fb0 dimensions (`vinfo.xres/yres`), store in `SDL_DisplayData.fb_width/fb_height`, use for `window->w/h`
+- `sdl2-2.26.5-mali/src/video/mali-fbdev/SDL_malivideo.h` — Added `fb_width`/`fb_height` fields to `SDL_DisplayData`
+
+**Key lesson:** PVR GE8300 EGL crashes if you pass `&struct` (pointer to fbdev_window struct). Must pass `native_display` by VALUE to `eglCreateWindowSurface`.
+
+---
+
+## 3. Controller CRC Fix in SDL2
+
+**Problem:** SDL2 2.26 computes GUID CRC from prettified name ("Xbox 360 Controller" via `GuessControllerName`), while 2.30 computes from raw `EVIOCGNAME` ("TRIMUI Brick Controller"). TrimUI Brick reports Xbox 360 vendor/product IDs (0x045e/0x028e), so the CRC mismatch caused the TrimUI mapping to not be found.
+
+**File:** `sdl2-2.26.5-mali/src/joystick/linux/SDL_sysjoystick.c:239`
+
+**Fix:** Changed `name` to `product_string` in `SDL_CreateJoystickGUID()` call, matching SDL2 2.30 behavior.
+
+---
+
+## 4. TrimUI Brick Controller Mapping in SDL2
+
+**Problem:** System `gamecontrollerdb.txt` has wrong button numbers for TrimUI Brick (a:b5,b:b4 — actual hardware sends a:b1,b:b0). Also SDL2 2.26 vs 2.30 assign different indices for Select/Start/Menu/LED buttons (b8-b12 in 2.26, b12-b16 in 2.30).
+
+**File:** `sdl2-2.26.5-mali/src/joystick/SDL_gamecontroller.c`
+
+**Fix:** Hardcoded correct mapping at USER priority after `SDL_GameControllerLoadHints()`:
+```
+a:b1,b:b0,x:b3,y:b2,back:b8,guide:b10,start:b9,
+leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,
+leftstick:b11,rightstick:b12,dpleft:h0.8,dpdown:h0.4,dpright:h0.2,dpup:h0.1
+```
+
+**Discovery method:** Built a C button test tool (`button_test.c`) that logs raw joystick events and SDL controller events, cross-compiled for aarch64 and ran on device to identify actual button codes.
+
+---
+
+## 5. FloatMenuWindow Crash Fix
+
+**Problem:** GemRB crashes when pressing Esc — assertion `target->IsVisible()` in `Window::DispatchEvent`. Root cause: PST's `FloatMenuWindow.py` never nulls the global `FloatMenuWindow` after the radial menu window closes. `GUICommonWindows.py:1403` then calls `.Close()` on a stale reference → `AttributeError: Invalid view` (logged 5 times before crash) → internal window state corruption → assertion failure.
+
+**File:** `/mnt/mmc/ports/gemrb/engine/GUIScripts/pst/FloatMenuWindow.py`
+
+**Fix:** Added `global FloatMenuWindow` + `FloatMenuWindow = None` at top of `OnClose()` nested function inside `OpenFloatMenuWindow()`. Python-only fix, no recompile.
+
+**Backup:** `gemrb-fix/FloatMenuWindow.py.patched`
+
+---
+
+## 6. Font Override — LiberationSerif TTF
+
+**Problem:** Default PST bitmap fonts (BAM) are too small at 640x480 on a handheld screen. BAM fonts completely ignore the `PX_SIZE` setting in `fonts.2da` — the BAMFontManager code literally comments out the `ptSize` parameter.
+
+**Solution:** Switch dialogue font from BAM to TTF. When `FONT_NAME` in `fonts.2da` doesn't match a `.bam` file, GemRB falls through to the TTFImporter which respects `PX_SIZE`.
+
+**Files on device:**
+- `/mnt/mmc/ports/gemrb/games/pst/override/LiberationSerif-Regular.ttf` — Copied from `/usr/share/fonts/liberation/` on device
+- `/mnt/mmc/ports/gemrb/games/pst/override/fonts.2da` — Rows 0 and 8 use TTF at 18px
+
+**Gotcha:** Rows 0 and 8 share the same RESREF (`FONTDLG`). Row 8 loads after row 0 and overwrites it. BOTH rows must use the TTF, otherwise row 8's BAM overwrites row 0's TTF. Row 9 (`NORMAL`) must exist — removing it crashes the load screen (`TextArea.cpp:236: Assertion 'ftext && finit' failed`).
+
+---
+
+## 7. Input Controls — gptokeyb Mapping
+
+**File on device:** `/mnt/mmc/ports/gemrb/gemrb.gptk`
+
+| Button | Action | Value |
+|--------|--------|-------|
+| D-pad | Mouse cursor | `mouse_movement_*` |
+| A | Left click | `mouse_left` |
+| B | Escape (back/dismiss) | `esc` |
+| X | Center character | `c` |
+| Y | Right click (radial menu) | `mouse_right` |
+| L1 | Scroll up | `up` |
+| L2 | Scroll down | `down` |
+| R1 | Highlight objects | `tab` |
+| R2 | Wizard spells | `w` |
+| Start | Pause | `space` |
+| Select | Quick save | `q` |
+| Menu | Options | `o` |
+| Left LED | Inventory | `i` |
+| Right LED | Map | `m` |
+
+Mouse speed: `dpad_mouse_step=10`, `mouse_delay=16` (~625 px/sec). Note: `mouse_scale` only affects analog sticks (irrelevant — TrimUI Brick has none). `dpad_mouse_step` is the actual D-pad cursor speed in pixels per tick.
+
+**gptokeyb naming gotchas:** Uses `l3`/`r3` (not `leftstick`/`rightstick`), `esc` (not `escape`), `back` (not `select`).
+
+---
+
+## 8. Taller Dialogue Window
+
+**Problem:** The CHU-defined dialogue window (window 7) is too small for comfortable reading on a handheld screen, especially with the larger TTF font. Naively resizing with `SetFrame()` doesn't work because the background is a fixed-size MOS bitmap from the CHU file — text overflows past the visual border.
+
+**File:** `/mnt/mmc/ports/gemrb/engine/GUIScripts/pst/MessageWindow.py`
+
+**Fix:** Replace the fixed MOS bitmap background with a solid semi-transparent color fill using `SetBackground({'r':0,'g':0,'b':0,'a':200})`, then enlarge the window by 160px with `SetFrame()`. The TextArea inside has `IE_GUI_VIEW_RESIZE_ALL` flag set, so it (and its internal ScrollView + scrollbar) auto-resize via the `ResizeSubviews` chain when the parent window frame changes. Only the window needs explicit resizing.
+
+**Code added at end of `OnLoad()`, before `UpdateControlStatus()`:**
+```python
+extra_h = 160
+mframe = MWindow.GetFrame()
+mframe['h'] += extra_h
+mframe['y'] -= extra_h
+MWindow.SetFrame(mframe)
+MWindow.SetBackground({'r': 0, 'g': 0, 'b': 0, 'a': 200})
+```
+
+**Key lessons:**
+- `SetFrame()` alone just repositions — the MOS background stays its original size
+- Resizing both window and TextArea explicitly causes text overflow glitches
+- `SetBackground()` with a color dict replaces the MOS with a scalable solid fill
+- The TextArea's `IE_GUI_VIEW_RESIZE_ALL` flag handles child resizing automatically
+
+---
+
+## 9. Keyboard Scrolling in Dialogue
+
+**Problem:** L1/L2 mapped to arrow up/down via gptokeyb, but pressing them scrolls the game viewport instead of the dialogue text.
+
+**Root cause:** MWindow has `IE_GUI_VIEW_IGNORE_EVENTS` flag set at creation (MessageWindow.py:60). When key events arrive, `GetFocusWindow()` (WindowManager.cpp:320) skips windows with this flag → falls through to `gameWin` (GameControl) → `GameControl::OnKeyPress` consumes arrow keys for viewport scrolling (GameControl.cpp:680-695). The scrolling code already exists in `ScrollView::OnKeyPress()` (ScrollView.cpp:349-374) — the events just never reach it.
+
+**File:** `/mnt/mmc/ports/gemrb/engine/GUIScripts/pst/MessageWindow.py`
+
+**Fix:** In `UpdateControlStatus()`, when entering dialogue mode: clear `IE_GUI_VIEW_IGNORE_EVENTS` so the window becomes the focus target for key events, then focus the TextArea so arrow keys route through its `eventProxy` to the internal ScrollView. On dialogue close, restore the flag.
+
+```python
+def UpdateControlStatus ():
+	if GemRB.GetGUIFlags() & (GS_DIALOGMASK|GS_DIALOG):
+		Label = MWindow.GetControl (0x10000003)
+		Label.SetText (str (GemRB.GameGetPartyGold ()))
+
+		MWindow.SetFlags(IE_GUI_VIEW_IGNORE_EVENTS, OP_NAND)
+		MWindow.Focus()
+		MessageTA = MWindow.GetControl (1)
+		MessageTA.Focus()
+	elif MWindow:
+		MWindow.SetFlags(IE_GUI_VIEW_IGNORE_EVENTS, OP_OR)
+		MWindow.Close()
+```
+
+**Known issue:** Scroll speed is very slow — `ScrollView::OnKeyPress()` uses a hardcoded `int amount = 10` (10px per keypress). The gameplay menu "Keyboard Scroll Speed" setting only affects `GameControl` viewport scrolling (GameControl.cpp:686), not `ScrollView`. Needs C++ fix to increase.
+
+---
+
+### 10a. Separate GL Program (Fix Black Screen)
+
+**Problem:** Original GemRB hijacked SDL2's internal GLES2 shader program by intercepting `GL_CURRENT_PROGRAM` after a dummy `SDL_RenderCopy`. This corrupted SDL2's internal program cache — uniform locations became stale, causing total black screen.
+
+**Fix (SDL20Video.cpp):** Create a brand-new GL program via `GLSLProgram::CreateFromFiles(..., 0)` instead of passing the hijacked program ID. SDL2's own ABGR shader remains untouched for compositing in `SwapBuffers`.
+
+### 10b. Direct GL Draws (Fix Missing Sprites)
+
+**Problem:** SDL2's `SDL_RenderCopyEx` uses its own internal shader, not ours. Our custom shader (with greyscale, stencil, channel swap) was never applied.
+
+**Fix (SDL20Video.cpp `RenderCopyShaded`):** Bypass `SDL_RenderCopyEx` entirely with direct GL draws:
+- Build a 6-vertex quad (2 triangles) with position, color, and texcoord attributes
+- Bind sprite texture via `SDL_GL_BindTexture` to get the underlying GL handle
+- Handle all blend modes (ADD, MOD, MUL, SRC, DST, ONE_MINUS_DST, BLENDED) via `glBlendFuncSeparate`
+- Handle MIRRORX/MIRRORY via texcoord swap
+
+### 10c. GL State Save/Restore (Fix Subsequent SDL2 Draws)
+
+**Problem:** SDL2 tracks GL state internally and skips redundant calls. If our direct draws change GL state without restoring it, SDL2's tracking goes stale — it won't re-bind its own program/blend/textures.
+
+**Fix (SDL20Video.cpp):** Full GL state save/restore around our draws:
+- `GL_CURRENT_PROGRAM` — our shader vs SDL2's shader
+- `GL_BLEND` + blend functions (src/dst RGB/A)
+- `GL_ACTIVE_TEXTURE` + `GL_TEXTURE_BINDING_2D` on unit 0
+- `GL_ARRAY_BUFFER_BINDING` — unbind VBO for client-side vertex arrays, restore after
+- `GL_VIEWPORT` — save/restore around our explicit viewport set
+- `GL_SCISSOR_TEST` — disable during our draws, restore after
+
+### 10d. GLES2 Vertex Shader + Attribute Bindings
+
+**Problem:** Desktop GL uses `gl_Vertex`, `gl_Color`, `gl_MultiTexCoord0`, `gl_ModelViewProjectionMatrix` — none of which exist in GLES2.
+
+**Fix:**
+- `SDLTextureV.glsl`: Added `#ifdef USE_GLES` path with explicit attributes (`a_position`, `a_color`, `a_texCoord`) and `u_projection` uniform matrix
+- `GLSLProgram.cpp`: Prepend `#define USE_GLES 1` to shader source on GLES2; bind attribute locations (0/1/2) before linking to match SDL2's GLES2 renderer convention
+- `BlitRGBA.glsl`: Wrap `u_brightness`/`u_contrast` in `#ifndef USE_GLES` — these are desktop-only and cause link errors on GLES2
+
+### 10e. Fix Blue Tint (R↔B Channel Swap)
+
+**Problem:** SDL2 GLES2 renderer uploads ALL textures as `GL_RGBA` regardless of SDL pixel format. For `ARGB8888` textures on little-endian ARM, memory layout is `[B,G,R,A]` — GL reads `r=B, g=G, b=R, a=A`, swapping red and blue. SDL2's own shaders fix this internally, but our custom shader bypassed them.
+
+**Fix:**
+- `BlitRGBA.glsl`: Added `uniform int u_swapRB`. When set, `texel.rb = texel.br` after texture sample
+- `SDL20Video.cpp`: Query texture format via `SDL_QueryTexture`. Set `u_swapRB=1` for `SDL_PIXELFORMAT_ARGB8888` and `SDL_PIXELFORMAT_BGRA8888`
+
+### 10f. Fix Viewport/Projection (Mispositioned Sprites)
+
+**Problem:** SDL2 defers `glViewport` calls — they only fire inside `SetDrawState` during SDL draw commands. Our direct GL draws bypass SDL's draw commands, so `glViewport` was never called, leaving a stale viewport from a previous render target. This caused the projection matrix to use wrong dimensions.
+
+**Fix (SDL20Video.cpp):** Use `SDL_RenderGetViewport` + `SDL_RenderGetScale` to compute viewport and projection, matching what SDL2's GLES2 renderer does internally in `SetDrawState`:
+- Projection uses logical viewport dimensions (accounts for `SDL_RenderSetLogicalSize`)
+- Physical GL viewport computed from logical viewport × scale factor
+- For FBO targets: `glViewport(x*scale, y*scale, w*scale, h*scale)` (typically scale=1.0)
+- For screen: Y-flipped for GL convention (`physY = outH - logicalY*scale - physH`)
+
+### Patch file
+
+All above changes are in `patches_094/GLES2_shader_fix.patch`, applied by `build_gemrb_094.sh`. Modified files:
+- `gemrb/plugins/SDLVideo/SDL20Video.cpp`
+- `gemrb/plugins/SDLVideo/GLSLProgram.cpp`
+- `gemrb/plugins/SDLVideo/Shaders/BlitRGBA.glsl`
+- `gemrb/plugins/SDLVideo/Shaders/SDLTextureV.glsl`
+
+---
+
+## Pending / In Progress
+
+### Dialogue scroll position (design question)
+- **Problem:** When dialogue opens with many options, the view auto-scrolls to the bottom (last option), hiding the speaker's text at the top. On a handheld you lose context of what was said.
+- **Possible fix:** Change `IE_GUI_TEXTAREA_AUTOSCROLL` behavior — instead of scrolling to bottom, scroll to where the new dialogue text begins (the speaker's line), letting options overflow below. Player scrolls down with L1/L2 to see more options.
+
+### Resolved (kept for reference)
+- ~~Scrollbar overlaps gold counter~~ — fixed in entry #14 (scrollbar positioned below gold counter)
+- ~~Text margins too tight~~ — fixed in entry #14 (SetMargins 4/16/4/16)
+- ~~Keyboard scroll requires click~~ — fixed in entry #14 (focus scrollbar directly, not TextArea)
+- ~~Scroll speed too slow~~ — fixed in entry #13 (dialogue_customization.patch: `vscroll->StepIncrement * 3`)
+- ~~Esc closes dialogue~~ — fixed in entry #15 (InDialog guard in C++)
+
+---
+
+## File Locations
+
+### On device (`/mnt/mmc/ports/gemrb/`)
+| Path | Description |
+|------|-------------|
+| `engine/` | GemRB master engine (from `engine_master.zip`) |
+| `engine/Shaders/` | BlitRGBA.glsl, SDLTextureV.glsl (custom GLES2 shaders) |
+| `engine/plugins/` | SDLVideo.so, GUIScript.so, etc. |
+| `engine/GUIScripts/pst/FloatMenuWindow.py` | Crash fix — null stale reference |
+| `engine/GUIScripts/pst/MessageWindow.py` | Full-width dialogue layout + z-index fix + keyboard scrolling |
+| `engine/unhardcoded/pst/fonts.2da` | TTF font override (Literata 18px) |
+| `games/pst/override/Literata.ttf` | TTF font file (serif, readable on handheld) |
+| `games/pst/override/LiberationSerif-Regular.ttf` | Alternate TTF font (unused, kept as fallback) |
+| `gemrb.gptk` | Button mapping for gptokeyb (dpad_mouse_step=10) |
+
+### On build machine (`~/miyoo-dev/gemrb-fix/`)
+| Path | Description |
+|------|-------------|
+| `build_gemrb_master.sh` | GemRB master build script (Docker, current) |
+| `patches_master/` | CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization patches |
+| `custom_scripts/pst/` | Custom Python scripts overlaid during build (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py) |
+| `engine_master.zip` | Latest build output |
+| `build_gemrb_094.sh` | GemRB v0.9.4 build script (Phase 2, archived) |
+| `patches_094/` | v0.9.4 patches (Phase 2, archived) |
+| `build_sdl2.sh` | SDL2 build script (Phase 1, archived) |
+| `sdl2-2.26.5-mali/` | SDL2 source (Phase 1, archived) |
+| `FloatMenuWindow.py.patched` | Backup of crash fix (canonical copy now in custom_scripts/) |
+| `button_test.c` | Diagnostic tool for button codes |
+
+
+raw 2do:
+- fonts differentiation, now dialog font also used in main menu, in items descriptions, notes etc. investigate what types of fonts are in the game and how to control them individually
+- characters blinking (NPCs as well, just blink sometimes, we should investigate.)
+- Videos are playing BLACK.
+- weapons dont change on character if i select them in inventory (i choose kinfe instead of axe, ragdol in inventory changes, but game character in game still holds axe)
