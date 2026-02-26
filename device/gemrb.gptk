@@ -1,0 +1,41 @@
+# GemRB PST controls for TrimUI Brick
+#
+# A = Left click       B = Escape (back/dismiss)
+# X = Center Character Y = Right click (radial menu)
+# L1 = Scroll up       L2 = Scroll down
+# R1 = Highlight       R2 = Wizard Spells
+# Start = Pause        Select = Quick Save
+# Menu = Options
+# Left LED = Inventory Right LED = Map
+# D-pad = Mouse cursor
+
+up = mouse_movement_up
+down = mouse_movement_down
+left = mouse_movement_left
+right = mouse_movement_right
+
+a = mouse_left
+b = esc
+x = c
+y = mouse_right
+
+l1 = up
+l2 = down
+
+r1 = tab
+r2 = w
+
+start = space
+back = q
+guide = o
+
+l3 = i
+r3 = m
+
+mouse_scale = 28800
+dpad_mouse_step = 6
+mouse_delay = 16
+deadzone_mode = axial
+deadzone = 1000
+deadzone_scale = 7
+deadzone_delay = 16
