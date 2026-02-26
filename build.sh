@@ -4,11 +4,12 @@ set -e
 # =============================================================================
 # GemRB Master (bc6e075) Build — TrimUI Brick / MuOS
 #
-# Builds upstream master (bc6e075) with 4 compatibility patches:
+# Builds upstream master (bc6e075) with 5 compatibility patches:
 #   - CORE_fixes: guard OnMouseDrag with buttonStates check (crash fix)
 #   - GLES2_fixes: hardcode OPENGLES2_FOUND for Docker build
 #   - GLES2_shader_fix: GLES2 attribute bindings, projection matrix, vertex shader
 #   - dialogue_customization: SetMargins Python binding, name format, compact options
+#   - video_fix: RGB555 format fallthrough + source pitch fix for GLES2 video
 #
 # USE_SDL_CONTROLLER_API is OFF — TrimUI Brick has no analog sticks,
 # so we use gptokeyb for D-pad mouse control and button remapping.
@@ -24,7 +25,7 @@ echo "=== GemRB Master ($GEMRB_COMMIT) Builder ==="
 echo ""
 
 # Verify patches exist
-for patch in CORE_fixes.patch GLES2_fixes.diff GLES2_shader_fix.patch dialogue_customization.patch; do
+for patch in CORE_fixes.patch GLES2_fixes.diff GLES2_shader_fix.patch dialogue_customization.patch video_fix.patch; do
     if [ ! -f "$PATCH_DIR/$patch" ]; then
         echo "ERROR: Missing patch: $PATCH_DIR/$patch"
         exit 1
@@ -65,6 +66,10 @@ echo "    Applied GLES2_shader_fix.patch"
 echo ">>> Applying dialogue_customization (SetMargins binding + name format + compact options)..."
 git apply "$PATCH_DIR/dialogue_customization.patch"
 echo "    Applied dialogue_customization.patch"
+
+echo ">>> Applying video_fix (RGB555 GLES2 format fallthrough + source pitch fix)..."
+git apply "$PATCH_DIR/video_fix.patch"
+echo "    Applied video_fix.patch"
 
 cd "$SCRIPT_DIR"
 

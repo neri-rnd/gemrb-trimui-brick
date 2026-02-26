@@ -32,17 +32,21 @@ diff --git a/gemrb/plugins/SDLVideo/SDL20Video.cpp b/gemrb/plugins/SDLVideo/SDL2
 index c1330fb..43cb388 100644
 --- a/gemrb/plugins/SDLVideo/SDL20Video.cpp
 +++ b/gemrb/plugins/SDLVideo/SDL20Video.cpp
-@@ -231,20 +231,11 @@ int SDL20VideoDriver::CreateSDLDisplay(const char* title, bool vsync)
+@@ -231,20 +231,21 @@ int SDL20VideoDriver::CreateSDLDisplay(const char* title, bool vsync)
  	scratchBuffer = CreateBuffer(Region(Point(), screenSize), BufferFormat::DISPLAY_ALPHA);
  	scratchBuffer->Clear();
  
 -	// Try to grab the texture shader program of SDL
--	static const SDL_Rect r = { 0, 0, 1, 1 };
--	SDL_RenderCopy(renderer, ScratchBuffer(), &r, &r);
--	#if SDL_VERSION_ATLEAST(2, 0, 10)
--	SDL_RenderFlush(renderer);
--	#endif
--
++	// Prime SDL2's GLES2 renderer — forces internal shader compilation
++	// and full pipeline init before any real rendering (e.g. video playback).
++	SDL_SetRenderTarget(renderer, NULL);
+ 	static const SDL_Rect r = { 0, 0, 1, 1 };
+ 	SDL_RenderCopy(renderer, ScratchBuffer(), &r, &r);
+ 	#if SDL_VERSION_ATLEAST(2, 0, 10)
+ 	SDL_RenderFlush(renderer);
+ 	#endif
++	SDL_RenderPresent(renderer);
+ 
 -	GLuint rgbaProgramID = 0;
 -	glGetIntegerv(GL_CURRENT_PROGRAM, reinterpret_cast<GLint*>(&rgbaProgramID));
 -	assert(rgbaProgramID > 0);

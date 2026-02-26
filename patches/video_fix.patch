@@ -1,0 +1,72 @@
+diff --git a/gemrb/plugins/SDLVideo/SDL20Video.h b/gemrb/plugins/SDLVideo/SDL20Video.h
+index 2741c57710..25d950fda1 100644
+--- a/gemrb/plugins/SDLVideo/SDL20Video.h
++++ b/gemrb/plugins/SDLVideo/SDL20Video.h
+@@ -39,7 +39,12 @@ Uint32 SDLPixelFormatFromBufferFormat(Video::BufferFormat fmt, SDL_Renderer* ren
+ {
+ 	switch (fmt) {
+ 		case Video::BufferFormat::RGB555:
+-			return SDL_PIXELFORMAT_RGB555;
++			if (renderer == NULL) {
++				return SDL_PIXELFORMAT_RGB555;
++			}
++			// GLES2 renderers don't natively support RGB555.
++			// Fall through to RGBA8888 so CopyPixels converts
++			// via SDL_ConvertPixels.
+ 		case Video::BufferFormat::RGBA8888:
+ 			return SDL_PIXELFORMAT_RGBA8888;
+ 		case Video::BufferFormat::YV12:
+@@ -97,6 +102,9 @@ public:
+ 		int access;
+ 		SDL_QueryTexture(texture, &nativeFormat, &access, NULL, NULL);
+ 
++		Log(MESSAGE, "SDLVideo", "VideoBuffer: inFmt={:#x} natFmt={:#x} access={} size={}x{} hasCvt={}",
++			inputFormat, nativeFormat, access, rect.w, rect.h, (inputFormat != nativeFormat) ? 1 : 0);
++
+ 		if (inputFormat != nativeFormat || access == SDL_TEXTUREACCESS_STREAMING) {
+ 			conversionBuffer = SDL_CreateRGBSurfaceWithFormat(0, rect.w, rect.h, SDL_BITSPERPIXEL(nativeFormat), nativeFormat);
+ 		}
+@@ -144,6 +152,8 @@ public:
+ 		SDL_Rect dst = RectFromRegion(rect);
+ 		SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+ 		int ret = SDL_RenderCopy(targetRenderer, texture, nullptr, &dst);
++		Log(MESSAGE, "SDLVideo", "RenderOnDisplay: dst=({},{} {}x{}) inputFmt={:#x} nativeFmt={:#x} ret={}",
++			dst.x, dst.y, dst.w, dst.h, inputFormat, nativeFormat, ret);
+ 		if (ret != 0) {
+ 			Log(ERROR, "SDLVideo", "{}", SDL_GetError());
+ 		}
+@@ -152,7 +162,14 @@ public:
+ 
+ 	void CopyPixels(const Region& bufDest, const void* pixelBuf, const int* pitch = NULL, ...) override
+ 	{
++		// Ensure this texture is NOT the current render target before uploading.
++		// On TBDR GPUs (PowerVR), calling glTexSubImage2D while the texture is
++		// an FBO color attachment causes undefined behavior — the deferred
++		// RenderClear can overwrite uploaded pixel data when the FBO resolves.
++		SDL_SetRenderTarget(renderer, NULL);
++
+ 		int sdlpitch = bufDest.w * SDL_BYTESPERPIXEL(nativeFormat);
++		int inputpitch = bufDest.w * SDL_BYTESPERPIXEL(inputFormat);
+ 		SDL_Rect dest = RectFromRegion(bufDest);
+ 
+ 		if (nativeFormat == SDL_PIXELFORMAT_YV12) {
+@@ -203,11 +220,17 @@ public:
+ 				Log(ERROR, "SDL20Video", "{}", SDL_GetError());
+ 			}
+ 		} else {
+-			int ret = SDL_ConvertPixels(bufDest.w, bufDest.h, inputFormat, pixelBuf, pitch ? *pitch : sdlpitch, nativeFormat, conversionBuffer->pixels, sdlpitch);
++			static int cvtFrameCount = 0;
++			cvtFrameCount++;
++			int ret = SDL_ConvertPixels(bufDest.w, bufDest.h, inputFormat, pixelBuf, pitch ? *pitch : inputpitch, nativeFormat, conversionBuffer->pixels, sdlpitch);
++			// Log center pixel instead of corner (corner is always black for logo videos)
++			int centerIdx = (bufDest.h / 2) * bufDest.w + (bufDest.w / 2);
++			Uint32 centerPixel = ret == 0 ? static_cast<Uint32*>(conversionBuffer->pixels)[centerIdx] : 0;
+ 			if (ret == 0) {
+ 				ret = SDL_UpdateTexture(texture, &dest, conversionBuffer->pixels, sdlpitch);
+ 			}
+-
++			Log(MESSAGE, "SDLVideo", "CopyPixels CONVERT: frame={} {}x{} inFmt={:#x} natFmt={:#x} conv={} update={} centerPx={:#010x}",
++				cvtFrameCount, bufDest.w, bufDest.h, inputFormat, nativeFormat, (ret == 0 || centerPixel != 0) ? 0 : -1, ret, centerPixel);
+ 			if (ret != 0) {
+ 				Log(ERROR, "SDL20Video", "{}", SDL_GetError());
+ 			}
