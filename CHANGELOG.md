@@ -8,9 +8,26 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 
 Upgraded to upstream master (commit bc6e075). Same GLES2 shader approach as Phase 2. Switched from SDL Controller API back to gptokeyb for input — TrimUI Brick has no analog sticks, so master's native GamepadControl (which requires sticks for cursor movement) doesn't work.
 
-Build: `gemrb-fix/build_gemrb_master.sh` → `engine_master.zip`
-Patches: `gemrb-fix/patches_master/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization)
-Custom scripts: `gemrb-fix/custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py)
+Build: `build.sh` → `engine.zip`
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix)
+Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py, GUIJRNL.py)
+
+---
+
+## 28. Video Playback Fix (MVE Cutscenes)
+
+**Problem:** PST cutscene videos (MVE format) played as a BLACK screen on the TrimUI Brick. Only the first video (BISLOGO) was affected — the second and third (TSRLOGO, OPENING) rendered correctly.
+
+**Root cause: TBDR render-target conflict.** The `SDLTextureVideoBuffer` constructor calls `Clear()`, which binds the video texture as an FBO render target (`SDL_SetRenderTarget(renderer, texture)`) and issues `SDL_RenderClear`. On PowerVR GE8300 (TBDR architecture), the clear is deferred in the tile buffer. The first `CopyPixels` call then uploads pixel data via `SDL_UpdateTexture` (`glTexSubImage2D`) while the texture is still the active FBO color attachment. When the FBO later resolves, the deferred clear overwrites the uploaded pixels — frame 1 is black, and the GPU texture cache stays corrupted for all subsequent frames. Videos 2 and 3 worked because the previous video's render cycle left the renderer in a clean state (RT already unbound).
+
+**Fix (`video_fix.patch`, SDL20Video.h):**
+- Added `SDL_SetRenderTarget(renderer, NULL)` at the start of `CopyPixels()`, before any `SDL_UpdateTexture` call — forces the TBDR GPU to resolve pending operations before new pixel data is uploaded
+- Safe for all code paths: frame 1 resolves the pending Clear; frame 2+ is a no-op (RT already NULL)
+- Also includes: center-pixel diagnostic logging (replaces corner pixel, which is always black in logo videos), frame counter, RGB555→ABGR8888 format conversion fixes
+
+**Result:** All 3 intro videos (BISLOGO, TSRLOGO, OPENING) render correctly. No regressions to game UI or sprites.
+
+**Requires rebuild** (C++ change, new patch file).
 
 ---
 
@@ -122,7 +139,7 @@ No rebuild needed — Python overlay, picked up by next `build.sh`.
 
 ---
 
-## 20. Continue Button — Full-Width Click Area ⚠️ TO BE VALIDATED
+## 20. Continue Button — Full-Width Click Area
 
 **Problem:** The Close/Continue button at the bottom of the dialogue window was resized from 64x64 (CHU default) to 640x28 via `SetFrame()`, but the BAM sprite highlight still rendered at the original 64px size in the left corner. `Button::HitTest` also checked the small BAM sprite's pixel transparency, so clicks outside the ~64px area were ignored.
 
@@ -174,13 +191,13 @@ if (center && mwinh < viewport.h) {
 }
 ```
 
-**Patch:** `patches_master/CORE_fixes.patch` (now 4 hunks: viewport centering, GameControl.h include, buttonStates guard, InDialog guard)
+**Patch:** `patches/CORE_fixes.patch` (now 4 hunks: viewport centering, GameControl.h include, buttonStates guard, InDialog guard)
 
 ---
 
 ## 16. Build System — Custom Script Overlay
 
-**Problem:** Every engine rebuild (`build_gemrb_master.sh`) replaces `engine/GUIScripts/pst/` with fresh upstream Python scripts, wiping our custom `MessageWindow.py` and `FloatMenuWindow.py`. These are full file replacements (not diffable patches) so a C++ patch approach doesn't apply.
+**Problem:** Every engine rebuild (`build.sh`) replaces `engine/GUIScripts/pst/` with fresh upstream Python scripts, wiping our custom `MessageWindow.py` and `FloatMenuWindow.py`. These are full file replacements (not diffable patches) so a C++ patch approach doesn't apply.
 
 **Fix:** Added `custom_scripts/pst/` directory to the project. The build script mounts it read-only into Docker and copies the files over the upstream versions right before packaging the zip:
 
@@ -192,9 +209,9 @@ cp /workspace/custom_scripts/pst/*.py /workspace/gemrb/build/engine/engine/GUISc
 ```
 
 **Files:**
-- `gemrb-fix/custom_scripts/pst/MessageWindow.py` — dialogue layout overhaul + OnClose safety net
-- `gemrb-fix/custom_scripts/pst/FloatMenuWindow.py` — null-on-close crash fix
-- `gemrb-fix/build_gemrb_master.sh` — added volume mount + copy step
+- `custom_scripts/pst/MessageWindow.py` — dialogue layout overhaul + OnClose safety net
+- `custom_scripts/pst/FloatMenuWindow.py` — null-on-close crash fix
+- `build.sh` — added volume mount + copy step
 
 **To add more custom scripts:** drop them in `custom_scripts/pst/` — next build picks them up automatically.
 
@@ -221,7 +238,7 @@ if (key.keycode == GEM_ESCAPE && mod == 0) {
 
 **Python — `MessageWindow.py` (safety net):** `MWindow.OnClose(OnDialogWindowClose)` restores NOT_DLG windows (portrait/action/options bars) if MWindow somehow closes during dialogue through any unanticipated path.
 
-**Patch:** `patches_master/CORE_fixes.patch` (3 hunks: GameControl.h include, buttonStates guard, InDialog guard)
+**Patch:** `patches/CORE_fixes.patch` (3 hunks: GameControl.h include, buttonStates guard, InDialog guard)
 
 ---
 
@@ -251,7 +268,7 @@ if (key.keycode == GEM_ESCAPE && mod == 0) {
 - Continue button (control 0): `GetControl(0).SetFrame()` / `.SetText()` — already worked
 - Gold counter (control 0x10000003): `GetControl(0x10000003).SetFrame()` — already worked
 
-**Patch:** `patches_master/dialogue_customization.patch`
+**Patch:** `patches/dialogue_customization.patch`
 
 ---
 
@@ -298,7 +315,7 @@ ScrollBar:  x=484 y=4    w=0    h=156
 **Fix:** Set `USE_SDL_CONTROLLER_API=OFF` in CMake. Re-enabled gptokeyb in launch script (`GemRB.sh`). All input goes through gptokeyb translating D-pad to mouse and buttons to keyboard, configured via `gemrb.gptk`.
 
 **Files:**
-- `gemrb-fix/build_gemrb_master.sh` — `-DUSE_SDL_CONTROLLER_API="OFF"`
+- `build.sh` — `-DUSE_SDL_CONTROLLER_API="OFF"`
 - `/mnt/mmc/ROMS/Ports/GemRB.sh` — uncommented `$GPTOKEYB "gemrb" -c "${GPTOKEYB_CFG}" textinput &`
 - `/mnt/mmc/ports/gemrb/gemrb.gptk` — `dpad_mouse_step=10` (2x default of 5), `mouse_delay=16`. Note: `mouse_scale` only affects analog sticks, not D-pad.
 
@@ -319,11 +336,13 @@ if (target == this) {
 }
 ```
 
-**Patch:** `patches_master/CORE_fixes.patch`
+**Patch:** `patches/CORE_fixes.patch`
 
 ---
 
 # Phase 2: GemRB v0.9.4 + Custom GLES2 Renderer (archived)
+
+> **Note:** Phase 2 is historical. All changes below were superseded by Phase 3 (upstream master). Kept for reference — the GLES2 shader approach developed here carried forward into Phase 3.
 
 Rebuilt from upstream v0.9.4. Uses system SDL2 2.30. All rendering goes through a custom GLES2 shader program with direct GL draws — no more SDL2 shader hijacking or bundled SDL2. Superseded by Phase 3 (master) but kept for reference.
 
@@ -341,6 +360,8 @@ Patches: `gemrb-fix/patches_094/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix)
 ---
 
 # Phase 1: GemRB v0.9.2 + Bundled SDL2 2.26.5 (archived)
+
+> **Note:** Phase 1 is historical. The bundled SDL2 approach was replaced by a custom GLES2 shader in Phase 2, then refined in Phase 3. Kept for reference.
 
 Used GemRB v0.9.2 with a bundled older SDL2 to work around GLES2 compositor bugs. Superseded by Phase 2 but kept for reference.
 
@@ -577,7 +598,7 @@ All above changes are in `patches_094/GLES2_shader_fix.patch`, applied by `build
 ### On device (`/mnt/mmc/ports/gemrb/`)
 | Path | Description |
 |------|-------------|
-| `engine/` | GemRB master engine (from `engine_master.zip`) |
+| `engine/` | GemRB master engine (from `engine.zip`) |
 | `engine/Shaders/` | BlitRGBA.glsl, SDLTextureV.glsl (custom GLES2 shaders) |
 | `engine/plugins/` | SDLVideo.so, GUIScript.so, etc. |
 | `engine/GUIScripts/pst/FloatMenuWindow.py` | Crash fix — null stale reference |
@@ -587,23 +608,13 @@ All above changes are in `patches_094/GLES2_shader_fix.patch`, applied by `build
 | `games/pst/override/LiberationSerif-Regular.ttf` | Alternate TTF font (unused, kept as fallback) |
 | `gemrb.gptk` | Button mapping for gptokeyb (dpad_mouse_step=10) |
 
-### On build machine (`~/miyoo-dev/gemrb-fix/`)
+### Repository (`~/gemrb-brick/`)
 | Path | Description |
 |------|-------------|
-| `build_gemrb_master.sh` | GemRB master build script (Docker, current) |
-| `patches_master/` | CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization patches |
-| `custom_scripts/pst/` | Custom Python scripts overlaid during build (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py) |
-| `engine_master.zip` | Latest build output |
-| `build_gemrb_094.sh` | GemRB v0.9.4 build script (Phase 2, archived) |
-| `patches_094/` | v0.9.4 patches (Phase 2, archived) |
-| `build_sdl2.sh` | SDL2 build script (Phase 1, archived) |
-| `sdl2-2.26.5-mali/` | SDL2 source (Phase 1, archived) |
-| `FloatMenuWindow.py.patched` | Backup of crash fix (canonical copy now in custom_scripts/) |
-| `button_test.c` | Diagnostic tool for button codes |
-
-
-raw 2do:
-- characters blinking (NPCs as well, just blink sometimes, we should investigate.)
-- Videos are playing BLACK.
-- weapons dont change on character if i select them in inventory (i choose knife instead of axe, ragdoll in inventory changes, but game character in game still holds axe)
-- Dialogue scroll position: when dialogue opens with many options, view auto-scrolls to bottom hiding speaker's text
+| `build.sh` | Cross-compile script (PortMaster Docker) |
+| `deploy.sh` | Deploy to device via adb (with backup/rollback) |
+| `patches/` | 5 patches: CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix |
+| `custom_scripts/pst/` | Python UI overrides: MessageWindow, FloatMenuWindow, PortraitWindow, Container, GUIJRNL |
+| `device/` | Device configs: gemrb.gptk, fonts.2da, Literata.ttf, gemrb.ini |
+| `engine.zip` | Latest build output (.gitignored) |
+| `upstream-gemrb/` | Upstream GemRB clone (.gitignored) |
