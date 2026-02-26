@@ -14,6 +14,52 @@ Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Por
 
 ---
 
+## 29. Fix Weapon Animation Not Updating on Equip/Remove
+
+**Problem:** Changing weapons in PST inventory never updates the in-game character sprite animation. Dragging the axe out and equipping a dagger (or any other weapon, in any slot) keeps showing the axe animation. The item icon and paperdoll update, but `IE_ANIMATION_ID` stays stale — `pcf_animid` never fires.
+
+**Root causes (three bugs):**
+
+1. **`SetPlayerStat` stack overflow on aarch64 (primary).** `GemRB_SetPlayerStat()` in `GUIScript.cpp` uses `PARSE_ARGS(args, "iIl|i", ..., &StatValue, &pcf)` where `StatValue` is `stat_t` (4 bytes, `uint32_t`) but the `l` format specifier writes a C `long` (8 bytes on aarch64). `PyArg_ParseTuple` writes 8 bytes into the 4-byte `StatValue`, and the upper 4 zero bytes overflow into the adjacent `pcf` variable on the stack, setting it to 0. With `pcf=0`, `SetCreatureStat` calls `SetBaseNoPCF` instead of `SetBase` — so `pcf_animid()` never fires, `SetAnimationID()` is never called, and the sprite never changes. The stat value itself gets updated (visible via `GetPlayerStat`), but the post-change function that creates new `CharAnimations` is silently skipped. This affects ALL `SetPlayerStat` calls from Python on aarch64 (LP64) — any stat with a PCF (animation, colors, state flags) won't trigger its callback.
+
+2. **Weapon removal never triggers animation update.** `GemRB_DragItem()` calls `TryToUnequip()` → `UnEquipItem(Slot, false)` with `removeBonuses=false`, which skips `RemoveSlotEffects()`, so `EF_UPDATEANIM` is never set. Dragging a weapon OUT of a slot never triggers `UpdateAnimation()`.
+
+3. **Same-slot equip skips animation update.** `Inventory::EquipItem()` has an early return when `Equipped == equip && EquippedHeader == newHeader`, skipping the `SetEquippedSlot()` → `UpdateWeaponAnimation()` → `EF_UPDATEANIM` chain.
+
+**PST animation update chain:** `EF_UPDATEANIM` → Python `UpdateAnimation()` → reads weapon's `AnimationType` → looks up `ANIMS.2da` → `SetPlayerStat(IE_ANIMATION_ID, value)` → `pcf_animid()` → new `CharAnimations`. Bug #1 breaks the last step (PCF never fires). Bugs #2 and #3 break the first step (`EF_UPDATEANIM` never set).
+
+**Diagnostics used:**
+- Python `print()` logging in `UpdateAnimation()` confirmed the function IS called, ANIMS.2da lookups succeed, and `SetPlayerStat` IS called with correct values (AX→0x602f, DD→0x6031, CL→0x6030, WH→0x6033)
+- C++ `Log()` in `pcf_animid` and `SetAnimationID` confirmed they NEVER fire for runtime weapon changes — only during initial actor load. This proved the bug was in the SetStat→PCF dispatch path, leading to the `l`/`stat_t` size mismatch discovery.
+
+**Fix (`CORE_fixes.patch`, three hunks in GUIScript.cpp + one in Inventory.cpp):**
+
+*GUIScript.cpp — `GemRB_SetPlayerStat()`:* Use `long` to match the `l` format specifier, then cast:
+```cpp
+long StatValueLong;
+int pcf = 1;
+PARSE_ARGS(args, "iIl|i", &globalID, &StatID, &StatValueLong, &pcf);
+stat_t StatValue = static_cast<stat_t>(StatValueLong);
+```
+
+*GUIScript.cpp — `GemRB_DragItem()`:* Set `EF_UPDATEANIM` after weapon removal:
+```cpp
+int slotEffects = core->QuerySlotEffects(core->QuerySlot(Slot));
+if (slotEffects == SLOT_EFFECT_MELEE || slotEffects == SLOT_EFFECT_MISSILE) {
+    core->SetEventFlag(EF_UPDATEANIM);
+}
+```
+
+*Inventory.cpp — `EquipItem()`:* Re-cache weapon info before same-slot early return:
+```cpp
+CacheAllWeaponInfo();
+UpdateWeaponAnimation();
+```
+
+**Verified** — all weapon animations update correctly on device (axe, dagger, club, warhammer, fist).
+
+---
+
 ## 28. Video Playback Fix (MVE Cutscenes)
 
 **Problem:** PST cutscene videos (MVE format) played as a BLACK screen on the TrimUI Brick. Only the first video (BISLOGO) was affected — the second and third (TSRLOGO, OPENING) rendered correctly.

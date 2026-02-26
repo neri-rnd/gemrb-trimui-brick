@@ -1,6 +1,8 @@
+diff --git a/gemrb/core/GUI/GameControl.cpp b/gemrb/core/GUI/GameControl.cpp
+index 364a8531d1..f6f8cd4acb 100644
 --- a/gemrb/core/GUI/GameControl.cpp
 +++ b/gemrb/core/GUI/GameControl.cpp
-@@ -1722,9 +1722,15 @@
+@@ -1722,9 +1722,15 @@ bool GameControl::MoveViewportTo(Point p, bool center, int speed)
  	if (updateVPTimer && speed) {
  		updateVPTimer = false;
  		if (center) {
@@ -19,17 +21,19 @@
  		}
  		core->timer.SetMoveViewPort(p, speed, center);
  	} else if (canMove && p != viewport.origin) {
+diff --git a/gemrb/core/GUI/Window.cpp b/gemrb/core/GUI/Window.cpp
+index 39a303907c..9af0032fc6 100644
 --- a/gemrb/core/GUI/Window.cpp
 +++ b/gemrb/core/GUI/Window.cpp
 @@ -24,6 +24,7 @@
  #include "Interface.h"
  #include "WindowManager.h"
-
+ 
 +#include "GUI/GameControl.h"
  #include "GUI/GUIScriptInterface.h"
  #include "Logging/Logging.h"
-
-@@ -586,7 +587,9 @@
+ 
+@@ -586,7 +587,9 @@ bool Window::DispatchEvent(const Event& event)
  			if (target == this) {
  				// skip the usual dispatch
  				// this is so that we can move windows that otherwise ignore events
@@ -40,9 +44,9 @@
  			} else {
  				DispatchMouseMotion(target, event.mouse);
  			}
-@@ -695,6 +698,10 @@
+@@ -696,6 +699,10 @@ bool Window::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
  	}
-
+ 
  	if (key.keycode == GEM_ESCAPE && mod == 0) {
 +		const GameControl* gc = core->GetGameControl();
 +		if (gc && gc->InDialog()) {
@@ -50,4 +54,49 @@
 +		}
  		Close();
  		return true;
+ 	}
+diff --git a/gemrb/core/Inventory.cpp b/gemrb/core/Inventory.cpp
+index 6526a21646..6f6eba003b 100644
+--- a/gemrb/core/Inventory.cpp
++++ b/gemrb/core/Inventory.cpp
+@@ -994,6 +994,10 @@ bool Inventory::EquipItem(ieDword slot)
+ 				slot = GetWeaponSlot(weaponslot);
+ 			}
+ 			if (ieWordSigned(equip) == Equipped && newHeader == EquippedHeader) {
++				// Item changed in same slot (e.g., weapon swap in inventory).
++				// Slot effects don't need reapplication, but animation must update.
++				CacheAllWeaponInfo();
++				UpdateWeaponAnimation();
+ 				gamedata->FreeItem(itm, item->ItemResRef, false);
+ 				return false;
+ 			}
+diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
+index f6b14d14cb..367e068dc1 100644
+--- a/gemrb/plugins/GUIScript/GUIScript.cpp
++++ b/gemrb/plugins/GUIScript/GUIScript.cpp
+@@ -6144,9 +6144,10 @@ static PyObject* GemRB_SetPlayerStat(PyObject* /*self*/, PyObject* args)
+ {
+ 	int globalID;
+ 	unsigned int StatID;
+-	stat_t StatValue;
++	long StatValueLong;
+ 	int pcf = 1;
+-	PARSE_ARGS(args, "iIl|i", &globalID, &StatID, &StatValue, &pcf);
++	PARSE_ARGS(args, "iIl|i", &globalID, &StatID, &StatValueLong, &pcf);
++	stat_t StatValue = static_cast<stat_t>(StatValueLong);
+ 	GET_GAME();
+ 	GET_ACTOR_GLOBAL();
+ 
+@@ -9343,6 +9344,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
+ 		}
+ 		si = TryToUnequip(actor, core->QuerySlot(Slot), Count);
+ 		actor->RefreshEffects();
++		// Weapon removed from slot — trigger animation update so PST
++		// re-lookups ANIMS.2da for the new (or empty) weapon
++		int slotEffects = core->QuerySlotEffects(core->QuerySlot(Slot));
++		if (slotEffects == SLOT_EFFECT_MELEE || slotEffects == SLOT_EFFECT_MISSILE) {
++			core->SetEventFlag(EF_UPDATEANIM);
++		}
+ 		actor->ReinitQuickSlots();
+ 		core->SetEventFlag(EF_SELECTION);
  	}
