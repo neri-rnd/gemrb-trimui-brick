@@ -88,16 +88,15 @@ def OnLoad():
 	# Replace MOS background with dark semi-transparent fill
 	MWindow.SetBackground({'r': 0, 'g': 0, 'b': 0, 'a': 144})
 
-	# --- TextArea: fill window minus button bar at bottom ---
-	BTN_BAR_H = 28
-	TA_MARGIN = 4
+	# --- TextArea: fill full window height ---
+	TA_MARGIN = 12
 	MessageTA.SetFlags(IE_GUI_TEXTAREA_AUTOSCROLL|IE_GUI_TEXTAREA_HISTORY)
 	MessageTA.SetResizeFlags(IE_GUI_VIEW_RESIZE_ALL)
 	MessageTA.AddAlias("MsgSys", 0)
-	MessageTA.SetFrame({'x': TA_MARGIN, 'y': TA_MARGIN, 'w': 640 - TA_MARGIN * 2, 'h': TARGET_H - BTN_BAR_H - TA_MARGIN * 2})
+	MessageTA.SetFrame({'x': TA_MARGIN, 'y': TA_MARGIN, 'w': 640 - TA_MARGIN * 2, 'h': TARGET_H - TA_MARGIN * 2})
 
-	# Text margins — uniform indent for name + speech text
-	MessageTA.SetMargins(4, 16, 4, 16)
+	# Text margins — uniform padding inside text area
+	MessageTA.SetMargins(16, 16, 16, 4)
 
 	# Colors - warm tones on dark background
 	MessageTA.SetColor({'r': 200, 'g': 200, 'b': 200, 'a': 255}, TA_COLOR_NORMAL)    # light grey for NPC text
@@ -105,26 +104,31 @@ def OnLoad():
 	MessageTA.SetColor({'r': 255, 'g': 255, 'b': 180, 'a': 255}, TA_COLOR_HOVER)     # warm yellow hover
 	MessageTA.SetColor({'r': 0, 'g': 0, 'b': 0, 'a': 0}, TA_COLOR_BACKGROUND)        # transparent bg
 
-	# Scrollbar - thin (8px), taller, below gold counter
-	sb = MessageTA.GetScrollBar()
-	if sb:
-		taf = MessageTA.GetFrame()
-		gf = GoldLabel.GetFrame()
-		sb_w = 8
-		sb_y = gf['y'] + gf['h'] + 2
-		sb.SetFrame({'x': taf['w'] - sb_w - 4, 'y': sb_y, 'w': sb_w, 'h': TARGET_H - BTN_BAR_H - sb_y - 2})
+	# --- Gold label: gold text, top-right ---
+	GoldLabel.SetFrame({'x': 548, 'y': 4, 'w': 76, 'h': 18})
+	GoldLabel.SetColor({'r': 255, 'g': 215, 'b': 0, 'a': 255})
 
-	# --- Close/Continue button: full-width bar at bottom ---
+	# --- Close/Continue button: top-left corner ---
 	CloseButton.SetSprites("", 0, 0, 0, 0, 0)
-	CloseButton.SetFrame({'x': 0, 'y': TARGET_H - BTN_BAR_H, 'w': 640, 'h': BTN_BAR_H})
-	CloseButton.SetBackground({'r': 35, 'g': 35, 'b': 45, 'a': 200})
+	CloseButton.SetFrame({'x': 0, 'y': 0, 'w': 200, 'h': 20})
+	CloseButton.SetBackground({'r': 30, 'g': 30, 'b': 40, 'a': 200})
+	CloseButton.SetBorder(0, {'r': 140, 'g': 160, 'b': 180, 'a': 160}, 1, 0)
 	CloseButton.SetColor({'r': 180, 'g': 200, 'b': 220, 'a': 255})
 	CloseButton.SetText(28082)
 	CloseButton.OnPress(MWindow.Close)
 	CloseButton.MakeDefault()
 
-	# --- Gold label: wider for large numbers, right-aligned ---
-	GoldLabel.SetFrame({'x': 640 - 80, 'y': 2, 'w': 76, 'h': 18})
+	# Z-order fix: move button in front of TextArea so it gets hit-tested first
+	MWindow.AddSubview(CloseButton, MessageTA)
+
+	# Scrollbar - thin (8px), starts below gold label on the right
+	sb = MessageTA.GetScrollBar()
+	if sb:
+		taf = MessageTA.GetFrame()
+		gf = GoldLabel.GetFrame()
+		sb_w = 12
+		sb_y = gf['y'] + gf['h'] + 2
+		sb.SetFrame({'x': taf['w'] - sb_w - 2, 'y': sb_y, 'w': sb_w, 'h': TARGET_H - TA_MARGIN * 2 - sb_y - 2})
 
 	OpenButton = OptionsWindow.GetControl(10)
 	OpenButton.OnPress(MWindow.Focus)

@@ -10,7 +10,39 @@ Upgraded to upstream master (commit bc6e075). Same GLES2 shader approach as Phas
 
 Build: `build.sh` → `engine.zip`
 Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix)
-Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py, GUIJRNL.py)
+Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUIMG.py, GUIPR.py, GUISAVE.py, GUIOPT.py)
+
+---
+
+## 31. Mage/Priest Spell Info Scrollbar, Save Game Scrollbar, Options Help Text
+
+**Problem:** Several upstream PST scripts had gamepad usability issues:
+- Mage spell window (`GUIMG.py`) had debug `print()` statements spamming the log on every refresh
+- Spell info popups (mage + priest) couldn't scroll long descriptions with D-pad
+- Save game window couldn't scroll through save slots with D-pad (GUILOAD already could)
+- Options sub-windows showed help text only on mouse hover, invisible to gamepad users
+
+**Fix (4 new Python overlays):**
+- `GUIMG.py`: Removed debug prints (`max_mem_cnt`, `mem_cnt`); added `Window.SetEventProxy(Text)` to spell info window for gamepad scrolling
+- `GUIPR.py`: Added `Window.SetEventProxy(Text)` to priest spell info window for gamepad scrolling
+- `GUISAVE.py`: Added `Window.SetEventProxy(ScrollBar)` + `SaveWindow.Focus()` for D-pad save slot scrolling; fixed upstream bug where `SetVarAssoc` was missing min/max range args (scrollbar was locked with 5+ saves)
+- `GUIOPT.py`: Modified `PSTOptButton` to show help text on button press (not just hover), so gamepad users see descriptions when activating Feedback/Autopause sub-menus
+
+No rebuild needed — Python overlays.
+
+---
+
+## 30. Fix Newline in Dialogue Continue/End Buttons + Remove Formation Debug Print
+
+**Problem:** The Continue and End dialogue buttons showed multi-line text because the string table entries (strrefs 34602, 34603, 28082) contain embedded newlines. On the 640x28 full-width button bar, this caused text to overflow or wrap awkwardly. Additionally, `SelectFormation()` had a leftover `print("FORMATION:", formation)` debug statement that spammed the log.
+
+**Fix (GUIWORLD.py, Python-only):**
+- `OpenEndMessageWindow()`: `Button.SetText(GemRB.GetString(34602).replace('\n',' ').strip())` — strip newlines from "End Dialogue" string
+- `OpenContinueMessageWindow()`: `Button.SetText(GemRB.GetString(34603).replace('\n',' ').strip())` — strip newlines from "Continue" string
+- `DialogEnded()`: `Button.SetText(GemRB.GetString(28082).replace('\n',' ').strip())` — strip newlines from "Close" string
+- `SelectFormation()`: Removed `print("FORMATION:", formation)` debug line
+
+No rebuild needed — Python overlay.
 
 ---
 
