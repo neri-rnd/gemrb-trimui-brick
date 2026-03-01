@@ -70,6 +70,26 @@ index 6526a21646..6f6eba003b 100644
  				gamedata->FreeItem(itm, item->ItemResRef, false);
  				return false;
  			}
+diff --git a/gemrb/core/Scriptable/Actor.cpp b/gemrb/core/Scriptable/Actor.cpp
+index e97cfd3079..cf1aeaaa53 100644
+--- a/gemrb/core/Scriptable/Actor.cpp
++++ b/gemrb/core/Scriptable/Actor.cpp
+@@ -7833,6 +7833,15 @@ void Actor::UpdateActorState()
+ 	}
+ 
+ 	if (anim.empty()) {
++		// Animation data missing for current stance (e.g. Morte has no CONJURE BAM).
++		// Try the auto-switch that GetAnimation() set up, so the actor transitions
++		// to a valid stance instead of staying invisible forever.
++		CharAnimations* ca = GetAnims();
++		if (ca && ca->autoSwitchOnEnd) {
++			HandleActorStance();
++		} else {
++			SetStance(IE_ANI_AWAKE);
++		}
+ 		UpdateModalState(game->GameTime);
+ 		return;
+ 	}
 diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
 index f6b14d14cb..367e068dc1 100644
 --- a/gemrb/plugins/GUIScript/GUIScript.cpp

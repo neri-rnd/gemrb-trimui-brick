@@ -413,3 +413,28 @@ index 6b58a34..8986564 100644
  	v_stencilCoord = (u_stencilMat * vec3(gl_Vertex.xy, 1.0)).xy;
 +#endif
  }
+diff --git a/gemrb/plugins/SDLVideo/SDLSurfaceSprite2D.cpp b/gemrb/plugins/SDLVideo/SDLSurfaceSprite2D.cpp
+index 57e08e14ef..2327412a08 100644
+--- a/gemrb/plugins/SDLVideo/SDLSurfaceSprite2D.cpp
++++ b/gemrb/plugins/SDLVideo/SDLSurfaceSprite2D.cpp
+@@ -220,10 +220,20 @@ BlitFlags SDLSurfaceSprite2D::PrepareForRendering(BlitFlags renderflags, const C
+ 		return BlitFlags::NONE;
+ 	}
+
++#if USE_OPENGL_BACKEND
++	// On GLES2, let the shader handle tint (COLOR_MOD/ALPHA_MOD via vertex
++	// color) and greyscale/sepia (GREY/SEPIA via u_greyMode uniform).
++	// This avoids per-frame palette re-shading and texture re-upload,
++	// which causes tint blinking when sprites are shared between actors
++	// with different area-lighting tints.
++	(void)renderflags;
++	auto blitFlags = BlitFlags::NONE;
++#else
+ 	auto blitFlags = (BlitFlags::GREY | BlitFlags::SEPIA) & renderflags;
+ 	if (tint) {
+ 		blitFlags |= (BlitFlags::COLOR_MOD | BlitFlags::ALPHA_MOD) & renderflags;
+ 	}
++#endif
+
+ 	// Something has changed/is new?
+ 	if (NeedToReshade(tint, blitFlags)) {

@@ -5,7 +5,7 @@ set -e
 # GemRB Master (bc6e075) Build — TrimUI Brick / MuOS
 #
 # Builds upstream master (bc6e075) with 5 compatibility patches:
-#   - CORE_fixes: guard OnMouseDrag with buttonStates check (crash fix)
+#   - CORE_fixes: OnMouseDrag crash fix, empty-anim stance recovery
 #   - GLES2_fixes: hardcode OPENGLES2_FOUND for Docker build
 #   - GLES2_shader_fix: GLES2 attribute bindings, projection matrix, vertex shader
 #   - dialogue_customization: SetMargins Python binding, name format, compact options
@@ -51,7 +51,7 @@ git init -q
 git add -A
 git commit -q -m "master base $GEMRB_COMMIT"
 
-echo ">>> Applying CORE_fixes (Window.cpp crash fix)..."
+echo ">>> Applying CORE_fixes (crash fix + empty-anim stance recovery)..."
 git apply "$PATCH_DIR/CORE_fixes.patch"
 echo "    Applied CORE_fixes.patch"
 
@@ -122,6 +122,10 @@ echo "    Copied: $(ls /workspace/custom_scripts/pst/*.py | xargs -n1 basename |
 echo ">>> Patching PST gemrb.ini (ButtonFont = NORMAL)..."
 sed -i 's/^ButtonFont = FONTDLG/ButtonFont = NORMAL/' /workspace/gemrb/build/engine/engine/unhardcoded/pst/gemrb.ini
 echo "    ButtonFont set to NORMAL (bitmap font for UI elements)"
+
+echo ">>> Patching stances.2da (Morte CONJURE → HEAD_TURN override)..."
+sed -i '/^0x2e.*2.*6$/a 0x2e            3            6' /workspace/gemrb/build/engine/engine/unhardcoded/pst/stances.2da
+echo "    Added 0x2e stance 3→6 (Morte CONJURE→HEAD_TURN)"
 
 echo ">>> Packaging engine.zip..."
 cd /workspace/gemrb/build/engine/engine

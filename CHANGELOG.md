@@ -14,6 +14,52 @@ Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Por
 
 ---
 
+## 33. Fix Character Tint Blinking at Dusk/Night (GLES2 Shader-Side Tint)
+
+**Problem:** Characters randomly appear darker with brownish-yellow (dusk) or bluish (night) tint that blinks on/off during dusk/night hours. The issue is purely in the rendering pipeline — game logic tint values are correct.
+
+**Root cause:** For paletted sprites (actors), tint was baked into the palette CPU-side via `ShadePalette()`, then the texture re-uploaded every draw call. Sprites are shared between actors, and each actor's draw applies a different position-specific tint (area lighting varies by position). The shared palette oscillates between tint values across draws, causing some actors to show the wrong tint.
+
+**Fix:** On GLES2 builds, skip the CPU-side palette shading entirely. The shader already has full infrastructure for this — `RenderCopyShaded()` builds quads with per-vertex color from the tint when `COLOR_MOD`/`ALPHA_MOD` flags are set, and the fragment shader applies multiplicative tint (`texel * v_color`) plus greyscale/sepia (`u_greyMode`). By returning `BlitFlags::NONE` from `PrepareForRendering()`, the tint flags flow through to the shader instead of being consumed by palette baking. The palette stays at base colors and the texture only re-uploads when the actual base palette changes (rare).
+
+**Files:** `GLES2_shader_fix.patch` (`SDLSurfaceSprite2D.cpp` — `#if USE_OPENGL_BACKEND` guard in `PrepareForRendering()`). Also removed diagnostic logging from `CORE_fixes.patch` (Map.cpp tint tracing hunk).
+
+---
+
+## 32. Fix Characters Disappearing During Spell Casting (Morte Litany of Curses)
+
+**Problem:** Three related animation bugs:
+1. Morte disappears when casting Litany of Curses — only reappears on movement
+2. Characters sometimes blink/flicker during spell sequences
+3. Related stance-stuck issues when animation BAMs are missing
+
+**Root cause:** When an actor enters a stance with no BAM animation file (e.g. Morte has no CONJURE BAM — he's a floating skull), `GetAnimation()` returns nullptr, `currentStance.anim` is cleared, and `Draw()` returns early → character invisible. The critical bug is in `UpdateActorState()` (Actor.cpp:7835): when `anim.empty()`, it returns WITHOUT calling `HandleActorStance()`. Even though `GetAnimation()` set `autoSwitchOnEnd = true` and `nextStanceID = IE_ANI_READY`, the auto-switch code is never reached. The actor is stuck invisible forever.
+
+**Spell casting flow:** `SetStance(IE_ANI_CAST)` → spell executes → `CastSpellEnd()` → `SetStance(IE_ANI_CONJURE)` → (should auto-switch to `IE_ANI_READY`). For Morte (0x2E, PST_ANIMATION_3), `IE_ANI_CAST` works (stances.2da overrides to HEAD_TURN), but `IE_ANI_CONJURE` has no override and no BAM → permanent invisibility.
+
+**Fix (two layers):**
+
+*Engine recovery (`CORE_fixes.patch`, Actor.cpp `UpdateActorState()`):*
+```cpp
+if (anim.empty()) {
+    CharAnimations* ca = GetAnims();
+    if (ca && ca->autoSwitchOnEnd) {
+        HandleActorStance();  // transition to valid stance
+    } else {
+        SetStance(IE_ANI_AWAKE);  // fallback to idle
+    }
+    UpdateModalState(game->GameTime);
+    return;
+}
+```
+Fixes all actors with missing stance animations, not just Morte.
+
+*Data prevention (`build.sh` sed, stances.2da):* Added `0x2e 3 6` override — maps Morte's CONJURE (3) to HEAD_TURN (6), so the missing BAM is never even attempted. Belt-and-suspenders with the engine fix.
+
+**Requires rebuild** (C++ change + build script).
+
+---
+
 ## 31. Mage/Priest Spell Info Scrollbar, Save Game Scrollbar, Options Help Text
 
 **Problem:** Several upstream PST scripts had gamepad usability issues:
