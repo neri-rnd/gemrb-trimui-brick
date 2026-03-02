@@ -9,8 +9,26 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, map_pin_fix)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, map_pin_fix, dialogue_scroll_fix)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
+
+---
+
+## 37. Dialogue Auto-Scroll Fix (Show Exchange Start Instead of Bottom)
+
+**Problem:** With FONTDLG increased to 22px Literata, PST dialogue text no longer fits in the 288px dialogue window. GemRB's PST-specific auto-scroll (`DIALOGUE_SCROLLS` feature flag) scrolled to the absolute bottom (`y = 9999999`), hiding the beginning of the NPC's response. The user had to manually scroll back up to read from the start.
+
+**Root cause:** In `TextArea::UpdateScrollview()`, the PST path hardcoded `y = 9999999` to scroll to the bottom. Non-PST games used `y = nodeBounds.y - LineHeight()` (scroll to dialogue begin marker) which is much better, but PST's animated scroll behavior required a different approach.
+
+**Fix (`dialogue_scroll_fix.patch`, TextArea.h/cpp + DialogHandler.cpp):**
+
+1. Added `dialogScrollTarget` field to `TextArea` — records text container height before each new dialogue exchange
+2. `DialogHandler::DialogChoose()` calls `ta->MarkDialogStart()` before NPC text is appended, capturing the scroll position where the new exchange begins
+3. `TextArea::UpdateScrollview()` PST path now scrolls to `dialogScrollTarget` instead of `9999999`. Falls back to `nodeBounds.y - LineHeight()` if no target is set
+4. `DialogHandler::EndDialog()` calls `ta->ClearDialogStart()` so non-dialogue text (combat messages, etc.) uses normal bottom-scroll
+5. `TextArea::ClearText()` resets the target for clean state
+
+**Result:** NPC response is visible from the first line. For long text, the user scrolls down with D-pad (upstream's 1-line-per-press native scrolling). Short text shows both NPC text and options without change.
 
 ---
 
