@@ -4,13 +4,46 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 
 ---
 
-# Phase 3: GemRB Master (bc6e075) + gptokeyb (current)
+# Phase 3: GemRB Master (0783b3e) + gptokeyb (current)
 
-Upgraded to upstream master (commit bc6e075). Same GLES2 shader approach as Phase 2. Switched from SDL Controller API back to gptokeyb for input — TrimUI Brick has no analog sticks, so master's native GamepadControl (which requires sticks for cursor movement) doesn't work.
+Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
 Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, map_pin_fix)
-Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUIMG.py, GUIPR.py, GUISAVE.py, GUIOPT.py, GUIREC.py)
+Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
+
+---
+
+## 36. Sync to Upstream Master (0783b3e)
+
+**Context:** The upstream gemrb developer reviewed our submitted bug reports and merged several fixes. He reported that "the core patch is no longer needed (except possibly viewport centering cancellation), at least half the dialogue customization patch is redundant, and several Python overrides can go." He also added native gamepad proxy/hotkey support, made up/down buttons work in the message window, and fixed 1-line-per-press scrolling.
+
+**Changes made:**
+
+### CORE_fixes.patch — stripped 2 redundant hunks
+- **Dropped** `GameControl.cpp` viewport centering hunk — upstream now has `p.y += mwinh / 2` (equivalent fix; centers NPC in visible strip above window)
+- **Dropped** `GUIScript.cpp` SetPlayerStat hunk — upstream fixed `stat_t` vs `long` mismatch with identical approach
+- **Kept** `Window.cpp` mouse drag guard (gptokeyb D-pad still sends buttonless mouse motion events)
+- **Kept** `Window.cpp` Esc-during-dialogue block (prevents B button closing dialogue on gamepad)
+- **Kept** `Inventory.cpp` same-slot equip animation update
+- **Kept** `Actor.cpp` stance recovery for missing animation BAMs
+- **Kept** `GUIScript.cpp` DragItem weapon removal animation trigger
+
+### Python overrides — removed 4 redundant files
+- **Removed** `PortraitWindow.py` — HP bar hiding for empty slots now in upstream
+- **Removed** `GUIOPT.py` — gamepad help text on button press now in upstream
+- **Removed** `GUIMG.py` — debug prints gone, event proxy now in upstream
+- **Removed** `GUIPR.py` — same as GUIMG.py
+
+### build.sh — updated commit hash
+- `GEMRB_COMMIT` bumped from `bc6e075` → `0783b3e`
+
+**Upstream changes that benefit us (no action required):**
+- Native message window up/down key scrolling (1 line per press)
+- More hotkey proxies (L/R spellbook navigation, focus forwarding)
+- FloatMenuWindow two-fix merge from nerifuture (portrait cycling + item use)
+- Container flash-on-close fix merged upstream
+- MoveViewportTo "exact center" formula corrected (mwinh/2)
 
 ---
 

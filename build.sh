@@ -2,10 +2,10 @@
 set -e
 
 # =============================================================================
-# GemRB Master (bc6e075) Build — TrimUI Brick / MuOS
+# GemRB Master (0783b3e) Build — TrimUI Brick / MuOS
 #
-# Builds upstream master (bc6e075) with 6 compatibility patches:
-#   - CORE_fixes: OnMouseDrag crash fix, empty-anim stance recovery
+# Builds upstream master (0783b3e) with 6 compatibility patches:
+#   - CORE_fixes: OnMouseDrag crash fix, empty-anim stance recovery, weapon anim on equip/remove
 #   - GLES2_fixes: hardcode OPENGLES2_FOUND for Docker build
 #   - GLES2_shader_fix: GLES2 attribute bindings, projection matrix, vertex shader
 #   - dialogue_customization: SetMargins Python binding, name format, compact options
@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATCH_DIR="$SCRIPT_DIR/patches"
 WORK_DIR="$SCRIPT_DIR/.build"
 UPSTREAM_REPO="${UPSTREAM_GEMRB:-$SCRIPT_DIR/upstream-gemrb}"
-GEMRB_COMMIT="bc6e075cd47e20a4835cc40d853d7470bfe0d2a1"
+GEMRB_COMMIT="0783b3ee8a881a36b3972d638d512f324824b620"
 
 echo "=== GemRB Master ($GEMRB_COMMIT) Builder ==="
 echo ""

@@ -1,28 +1,5 @@
-diff --git a/gemrb/core/GUI/GameControl.cpp b/gemrb/core/GUI/GameControl.cpp
-index 364a8531d1..f6f8cd4acb 100644
---- a/gemrb/core/GUI/GameControl.cpp
-+++ b/gemrb/core/GUI/GameControl.cpp
-@@ -1722,9 +1722,15 @@ bool GameControl::MoveViewportTo(Point p, bool center, int speed)
- 	if (updateVPTimer && speed) {
- 		updateVPTimer = false;
- 		if (center) {
--			// also account for message window height, since it can cover the center of the window at lowest resolutions
--			// GlobalTimer does its own centering, so we only offset
--			p.y += mwinh;
-+			if (mwinh < viewport.h) {
-+				// Center NPC in the visible strip above the message window
-+				// mwinh/2 makes GlobalTimer place the NPC at (viewport.h - mwinh) / 2
-+				p.y += mwinh / 2;
-+			} else {
-+				// Message window covers entire screen — skip pan
-+				updateVPTimer = false;
-+				return canMove;
-+			}
- 		}
- 		core->timer.SetMoveViewPort(p, speed, center);
- 	} else if (canMove && p != viewport.origin) {
 diff --git a/gemrb/core/GUI/Window.cpp b/gemrb/core/GUI/Window.cpp
-index 39a303907c..9af0032fc6 100644
+index 400c41c..ad74b21 100644
 --- a/gemrb/core/GUI/Window.cpp
 +++ b/gemrb/core/GUI/Window.cpp
 @@ -24,6 +24,7 @@
@@ -44,7 +21,7 @@ index 39a303907c..9af0032fc6 100644
  			} else {
  				DispatchMouseMotion(target, event.mouse);
  			}
-@@ -696,6 +699,10 @@ bool Window::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
+@@ -695,6 +698,10 @@ bool Window::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
  	}
  
  	if (key.keycode == GEM_ESCAPE && mod == 0) {
@@ -56,10 +33,10 @@ index 39a303907c..9af0032fc6 100644
  		return true;
  	}
 diff --git a/gemrb/core/Inventory.cpp b/gemrb/core/Inventory.cpp
-index 6526a21646..6f6eba003b 100644
+index b9c4af2..dde484b 100644
 --- a/gemrb/core/Inventory.cpp
 +++ b/gemrb/core/Inventory.cpp
-@@ -994,6 +994,10 @@ bool Inventory::EquipItem(ieDword slot)
+@@ -1006,6 +1006,10 @@ bool Inventory::EquipItem(ieDword slot)
  				slot = GetWeaponSlot(weaponslot);
  			}
  			if (ieWordSigned(equip) == Equipped && newHeader == EquippedHeader) {
@@ -71,7 +48,7 @@ index 6526a21646..6f6eba003b 100644
  				return false;
  			}
 diff --git a/gemrb/core/Scriptable/Actor.cpp b/gemrb/core/Scriptable/Actor.cpp
-index e97cfd3079..cf1aeaaa53 100644
+index cb3a725..3d03580 100644
 --- a/gemrb/core/Scriptable/Actor.cpp
 +++ b/gemrb/core/Scriptable/Actor.cpp
 @@ -7833,6 +7833,15 @@ void Actor::UpdateActorState()
@@ -91,23 +68,10 @@ index e97cfd3079..cf1aeaaa53 100644
  		return;
  	}
 diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
-index f6b14d14cb..367e068dc1 100644
+index d536d9a..8964c19 100644
 --- a/gemrb/plugins/GUIScript/GUIScript.cpp
 +++ b/gemrb/plugins/GUIScript/GUIScript.cpp
-@@ -6144,9 +6144,10 @@ static PyObject* GemRB_SetPlayerStat(PyObject* /*self*/, PyObject* args)
- {
- 	int globalID;
- 	unsigned int StatID;
--	stat_t StatValue;
-+	long StatValueLong;
- 	int pcf = 1;
--	PARSE_ARGS(args, "iIl|i", &globalID, &StatID, &StatValue, &pcf);
-+	PARSE_ARGS(args, "iIl|i", &globalID, &StatID, &StatValueLong, &pcf);
-+	stat_t StatValue = static_cast<stat_t>(StatValueLong);
- 	GET_GAME();
- 	GET_ACTOR_GLOBAL();
- 
-@@ -9343,6 +9344,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
+@@ -9343,6 +9343,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
  		}
  		si = TryToUnequip(actor, core->QuerySlot(Slot), Count);
  		actor->RefreshEffects();
