@@ -9,8 +9,30 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, map_pin_fix, dialogue_scroll_fix)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, map_pin_fix, dialogue_scroll_fix, dialogue_footer)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
+
+---
+
+## 38. Dialogue "Scroll Down" Indicator
+
+**Problem:** With 22px Literata font, dialogue text and options often overflow the visible TextArea. After the scroll-start fix (#37), NPC text appears from the top, but there was no visual cue that more content existed below the fold. Users had to guess whether to scroll.
+
+**Fix (`dialogue_footer.patch` + MessageWindow.py + GUIWORLD.py):**
+
+C++ patch exposes TextArea scroll state to Python:
+- `ScrollView`: Added `ScrollNotifier` callback, fires on every scroll change from `UpdateScrollbars()`
+- `TextArea`: Added `GetScrollInfo()` returning `{content, visible, pos}` dict, plus `Action::Scroll` event
+- `GUIScript`: New `TextArea_GetScrollInfo` Python binding
+- `GUIClasses`: Registered `GetScrollInfo` method and `OnScroll()` convenience handler
+
+Python changes create a 22px footer strip at the bottom of the dialogue window:
+- TextArea shrunk by 22px (264 -> 242) to make room
+- "scroll down" label centered in footer, warm orange, shown when content overflows below
+- Continue/End button moved to same footer position (invisible background, text-only)
+- Arrow and button share the space — arrow hides when button has text, and vice versa
+- `OnScroll` hook reactively updates indicator on every D-pad scroll
+- `UpdateFooterArrow()` called from `UpdateControlStatus`, `NextDialogState`, `OpenContinueMessageWindow`, `OpenEndMessageWindow`; arrow hidden in `DialogStarted`/`DialogEnded`
 
 ---
 

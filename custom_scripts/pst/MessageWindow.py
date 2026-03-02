@@ -88,12 +88,14 @@ def OnLoad():
 	# Replace MOS background with dark semi-transparent fill
 	MWindow.SetBackground({'r': 0, 'g': 0, 'b': 0, 'a': 144})
 
-	# --- TextArea: fill full window height ---
+	# --- TextArea: main content area (leaves 22px footer for arrow/button) ---
 	TA_MARGIN = 12
+	FOOTER_H = 22
+	TA_H = TARGET_H - TA_MARGIN * 2 - FOOTER_H  # 242px
 	MessageTA.SetFlags(IE_GUI_TEXTAREA_AUTOSCROLL|IE_GUI_TEXTAREA_HISTORY)
 	MessageTA.SetResizeFlags(IE_GUI_VIEW_RESIZE_ALL)
 	MessageTA.AddAlias("MsgSys", 0)
-	MessageTA.SetFrame({'x': TA_MARGIN, 'y': TA_MARGIN, 'w': 640 - TA_MARGIN * 2, 'h': TARGET_H - TA_MARGIN * 2})
+	MessageTA.SetFrame({'x': TA_MARGIN, 'y': TA_MARGIN, 'w': 640 - TA_MARGIN * 2, 'h': TA_H})
 
 	# Text margins — uniform padding inside text area
 	MessageTA.SetMargins(16, 16, 16, 4)
@@ -108,11 +110,10 @@ def OnLoad():
 	GoldLabel.SetFrame({'x': 548, 'y': 4, 'w': 76, 'h': 18})
 	GoldLabel.SetColor({'r': 255, 'g': 215, 'b': 0, 'a': 255})
 
-	# --- Close/Continue button: top-left corner ---
+	# --- Close/Continue button: footer center (invisible until text set) ---
+	FOOTER_Y = TA_MARGIN + TA_H + 1
 	CloseButton.SetSprites("", 0, 0, 0, 0, 0)
-	CloseButton.SetFrame({'x': 0, 'y': 0, 'w': 200, 'h': 20})
-	CloseButton.SetBackground({'r': 30, 'g': 30, 'b': 40, 'a': 200})
-	CloseButton.SetBorder(0, {'r': 140, 'g': 160, 'b': 180, 'a': 160}, 1, 0)
+	CloseButton.SetFrame({'x': 220, 'y': FOOTER_Y, 'w': 200, 'h': 20})
 	CloseButton.SetColor({'r': 180, 'g': 200, 'b': 220, 'a': 255})
 	CloseButton.SetText(28082)
 	CloseButton.OnPress(MWindow.Close)
@@ -121,14 +122,23 @@ def OnLoad():
 	# Z-order fix: move button in front of TextArea so it gets hit-tested first
 	MWindow.AddSubview(CloseButton, MessageTA)
 
-	# Scrollbar - thin (8px), starts below gold label on the right
+	# Scrollbar - thin, starts below gold label on the right
 	sb = MessageTA.GetScrollBar()
 	if sb:
 		taf = MessageTA.GetFrame()
 		gf = GoldLabel.GetFrame()
 		sb_w = 12
 		sb_y = gf['y'] + gf['h'] + 2
-		sb.SetFrame({'x': taf['w'] - sb_w - 2, 'y': sb_y, 'w': sb_w, 'h': TARGET_H - TA_MARGIN * 2 - sb_y - 2})
+		sb.SetFrame({'x': taf['w'] - sb_w - 2, 'y': sb_y, 'w': sb_w, 'h': TA_H - sb_y - 2})
+
+	# --- "Scroll down" indicator in footer (same position as button) ---
+	ArrowLabel = MWindow.CreateLabel(100, 220, FOOTER_Y, 200, 20,
+		"NORMAL", "scroll down", IE_FONT_ALIGN_CENTER|IE_FONT_SINGLE_LINE)
+	ArrowLabel.SetColor({'r': 255, 'g': 200, 'b': 100, 'a': 255})
+	ArrowLabel.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_OR)
+
+	# Hook scroll events for reactive arrow show/hide
+	MessageTA.OnScroll(lambda ta: UpdateFooterArrow())
 
 	OpenButton = OptionsWindow.GetControl(10)
 	OpenButton.OnPress(MWindow.Focus)
@@ -166,6 +176,28 @@ def SetupClockWindowControls (Window):
 
 	return
 
+def UpdateFooterArrow():
+	"""Show/hide the 'scroll down' indicator based on whether content overflows below."""
+	if not MWindow:
+		return
+	MessageTA = MWindow.GetControl(1)
+	ArrowLabel = MWindow.GetControl(100)
+	if not MessageTA or not ArrowLabel:
+		return
+	# Hide when Continue/End button has text (they share the same space)
+	CloseButton = MWindow.GetControl(0)
+	if CloseButton and CloseButton.QueryText():
+		ArrowLabel.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_OR)
+		return
+	try:
+		info = MessageTA.GetScrollInfo()
+	except:
+		return
+	if info['content'] > info['visible'] and info['pos'] + info['visible'] < info['content'] - 4:
+		ArrowLabel.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_NAND)
+	else:
+		ArrowLabel.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_OR)
+
 def UpdateControlStatus ():
 	if GemRB.GetGUIFlags() & (GS_DIALOGMASK|GS_DIALOG):
 		Label = MWindow.GetControl(0x10000003)
@@ -188,6 +220,8 @@ def UpdateControlStatus ():
 			sb.Focus()
 		else:
 			MessageTA.Focus()
+
+		UpdateFooterArrow()
 	elif MWindow:
 		# Restore NOT_DLG windows
 		for i in range(3):

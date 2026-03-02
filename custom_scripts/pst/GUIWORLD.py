@@ -48,12 +48,22 @@ def DialogStarted ():
 	CloseButton.SetDisabled(True)
 	CloseButton.SetFlags (IE_GUI_BUTTON_NO_IMAGE, OP_OR)
 
+	# Hide scroll arrow at dialog start
+	ArrowLabel = MWin.GetControl(100)
+	if ArrowLabel:
+		ArrowLabel.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_OR)
+
 def DialogEnded ():
 	Button = MessageWindow.MWindow.GetControl (0)
 	Button.MakeDefault(True)
 	Button.SetDisabled(False)
 	Button.SetText (GemRB.GetString(28082).replace('\n',' ').strip())
 	Button.SetFlags (IE_GUI_BUTTON_NO_IMAGE, OP_NAND)
+
+	# Hide scroll arrow when dialog ends
+	ArrowLabel = MessageWindow.MWindow.GetControl(100)
+	if ArrowLabel:
+		ArrowLabel.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_OR)
 
 def CloseContinueWindow ():
 	# don't close the actual window now to avoid flickering: we might still want it open
@@ -66,12 +76,15 @@ def NextDialogState ():
 	Button = MessageWindow.MWindow.GetControl (0)
 	Button.OnPress (None)
 
+	MessageWindow.UpdateFooterArrow()
+
 def OpenEndMessageWindow ():
 	Button = MessageWindow.MWindow.GetControl (0)
 	Button.SetText (GemRB.GetString(34602).replace('\n',' ').strip())
 	Button.OnPress (CloseContinueWindow)
 	Button.MakeDefault(True)
 	Button.SetDisabled(False)
+	MessageWindow.UpdateFooterArrow()
 
 def OpenContinueMessageWindow ():
 	#continue
@@ -80,6 +93,7 @@ def OpenContinueMessageWindow ():
 	Button.OnPress (CloseContinueWindow)
 	Button.MakeDefault(True)
 	Button.SetDisabled(False)
+	MessageWindow.UpdateFooterArrow()
 
 last_formation = None
 

@@ -4,7 +4,7 @@ set -e
 # =============================================================================
 # GemRB Master (0783b3e) Build — TrimUI Brick / MuOS
 #
-# Builds upstream master (0783b3e) with 7 compatibility patches:
+# Builds upstream master (0783b3e) with 8 compatibility patches:
 #   - CORE_fixes: OnMouseDrag crash fix, empty-anim stance recovery, weapon anim on equip/remove
 #   - GLES2_fixes: hardcode OPENGLES2_FOUND for Docker build
 #   - GLES2_shader_fix: GLES2 attribute bindings, projection matrix, vertex shader
@@ -12,6 +12,7 @@ set -e
 #   - video_fix: RGB555 format fallthrough + source pitch fix for GLES2 video
 #   - map_pin_fix: PST autonote.ini coordinate conversion + always reload from INI
 #   - dialogue_scroll_fix: auto-scroll to dialogue exchange start instead of bottom
+#   - dialogue_footer: TextArea scroll info API for "more below" arrow indicator
 #
 # USE_SDL_CONTROLLER_API is OFF — TrimUI Brick has no analog sticks,
 # so we use gptokeyb for D-pad mouse control and button remapping.
@@ -27,7 +28,7 @@ echo "=== GemRB Master ($GEMRB_COMMIT) Builder ==="
 echo ""
 
 # Verify patches exist
-for patch in CORE_fixes.patch GLES2_fixes.diff GLES2_shader_fix.patch dialogue_customization.patch video_fix.patch map_pin_fix.patch dialogue_scroll_fix.patch; do
+for patch in CORE_fixes.patch GLES2_fixes.diff GLES2_shader_fix.patch dialogue_customization.patch video_fix.patch map_pin_fix.patch dialogue_scroll_fix.patch dialogue_footer.patch; do
     if [ ! -f "$PATCH_DIR/$patch" ]; then
         echo "ERROR: Missing patch: $PATCH_DIR/$patch"
         exit 1
@@ -80,6 +81,10 @@ echo "    Applied map_pin_fix.patch"
 echo ">>> Applying dialogue_scroll_fix (auto-scroll to exchange start)..."
 git apply "$PATCH_DIR/dialogue_scroll_fix.patch"
 echo "    Applied dialogue_scroll_fix.patch"
+
+echo ">>> Applying dialogue_footer (TextArea scroll info for footer arrow)..."
+git apply "$PATCH_DIR/dialogue_footer.patch"
+echo "    Applied dialogue_footer.patch"
 
 cd "$SCRIPT_DIR"
 

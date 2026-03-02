@@ -1,0 +1,163 @@
+diff --git a/gemrb/GUIScripts/GUIClasses.py b/gemrb/GUIScripts/GUIClasses.py
+index 3145e51..b4be789 100644
+--- a/gemrb/GUIScripts/GUIClasses.py
++++ b/gemrb/GUIScripts/GUIClasses.py
+@@ -303,6 +303,7 @@ class GTextArea(GControl, Scrollable):
+ 		'Append': _GemRB.TextArea_Append,
+ 		'SetMargins': _GemRB.TextArea_SetMargins,
+ 		'GetScrollBar': _GemRB.TextArea_GetScrollBar,
++		'GetScrollInfo': _GemRB.TextArea_GetScrollInfo,
+ 	}
+ 	__slots__ = ['DefaultText']
+ 
+@@ -320,6 +321,9 @@ class GTextArea(GControl, Scrollable):
+ 	def OnSelect(self, handler):
+ 		self.SetAction(handler, IE_ACT_CUSTOM)
+ 
++	def OnScroll(self, handler):
++		self.SetAction(handler, IE_ACT_CUSTOM + 1)
++
+ class GTextEdit(GControl):
+ 	methods = {
+ 		'SetBufferLength': _GemRB.TextEdit_SetBufferLength,
+diff --git a/gemrb/core/GUI/ScrollView.cpp b/gemrb/core/GUI/ScrollView.cpp
+index cf9b267..0c3b0bc 100644
+--- a/gemrb/core/GUI/ScrollView.cpp
++++ b/gemrb/core/GUI/ScrollView.cpp
+@@ -215,6 +215,8 @@ void ScrollView::UpdateScrollbars()
+ 		ToggleScrollbar(vscroll, show);
+ 		vscroll->SetValue(-contentFrame.origin.y);
+ 	}
++
++	if (scrollNotifier) scrollNotifier();
+ }
+ 
+ void ScrollView::ScrollbarValueChange(const ScrollBar* sb)
+diff --git a/gemrb/core/GUI/ScrollView.h b/gemrb/core/GUI/ScrollView.h
+index e9986d6..98ad4c9 100644
+--- a/gemrb/core/GUI/ScrollView.h
++++ b/gemrb/core/GUI/ScrollView.h
+@@ -23,6 +23,8 @@
+ #include "GUI/GUIAnimation.h"
+ #include "GUI/View.h"
+ 
++#include <functional>
++
+ namespace GemRB {
+ class ScrollBar;
+ 
+@@ -46,6 +48,8 @@ class GEM_EXPORT ScrollView : public View,
+ 		void ResizeToSubviews();
+ 	};
+ 
++	using ScrollNotifier = std::function<void()>;
++
+ 	PointAnimation animation;
+ 
+ 	ScrollBar* hscroll = nullptr;
+@@ -53,6 +57,7 @@ class GEM_EXPORT ScrollView : public View,
+ 	Size savedSBSize;
+ 
+ 	ContentView contentView;
++	ScrollNotifier scrollNotifier;
+ 
+ private:
+ 	void UpdateScrollbars();
+@@ -77,6 +82,8 @@ public:
+ 	void SetHScroll(ScrollBar* sb);
+ 	ScrollBar* GetVScroll() const { return vscroll; }
+ 
++	void SetScrollNotifier(ScrollNotifier cb) { scrollNotifier = std::move(cb); }
++
+ 	bool IsAnimated() const override { return static_cast<bool>(animation); }
+ 
+ 	void AddSubviewInFrontOfView(View*, const View* = NULL) override;
+diff --git a/gemrb/core/GUI/TextArea.cpp b/gemrb/core/GUI/TextArea.cpp
+index 16235a1..1ad0ce1 100644
+--- a/gemrb/core/GUI/TextArea.cpp
++++ b/gemrb/core/GUI/TextArea.cpp
+@@ -250,6 +250,8 @@ TextArea::TextArea(const Region& frame, Holder<Font> text, Holder<Font> caps)
+ 	scrollview.SetAutoResizeFlags(ResizeAll, BitOp::SET);
+ 	scrollview.SetFlags(View::IgnoreEvents, (Flags() & View::IgnoreEvents) ? BitOp::OR : BitOp::NAND);
+ 
++	scrollview.SetScrollNotifier([this]() { PerformAction(Action::Scroll); });
++
+ 	BindDictVariable("Selected", Control::INVALID_VALUE);
+ }
+ 
+@@ -297,6 +299,11 @@ ScrollBar* TextArea::GetScrollBar() const
+ 	return scrollview.GetVScroll();
+ }
+ 
++TextArea::ScrollInfo TextArea::GetScrollInfo() const
++{
++	return { ContentHeight(), scrollview.ContentRegion().size.h, -scrollview.ScrollOffset().y };
++}
++
+ int TextArea::LineCount() const
+ {
+ 	int rowHeight = LineHeight();
+diff --git a/gemrb/core/GUI/TextArea.h b/gemrb/core/GUI/TextArea.h
+index 6ec3dd5..46bb95b 100644
+--- a/gemrb/core/GUI/TextArea.h
++++ b/gemrb/core/GUI/TextArea.h
+@@ -180,6 +180,9 @@ public:
+ 	void SetMargins(ContentContainer::Margin m);
+ 	ScrollBar* GetScrollBar() const;
+ 
++	struct ScrollInfo { int contentHeight; int visibleHeight; int scrollPos; };
++	ScrollInfo GetScrollInfo() const;
++
+ 	void MarkDialogStart();
+ 	void ClearDialogStart() { dialogScrollTarget = -1; }
+ 
+@@ -235,6 +238,7 @@ public: //Events
+ 		// !!! Keep these synchronized with GUIDefines.py !!!
+ 		static const Control::Action Change = Control::ValueChange; // text change event (keyboard, etc)
+ 		static const Control::Action Select = ACTION_CUSTOM(0); // selection event such as dialog or a listbox
++		static const Control::Action Scroll = ACTION_CUSTOM(1); // scroll position changed
+ 	};
+ 
+ 	enum TextAreaFlags {
+diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
+index 92a2b0c..3591f85 100644
+--- a/gemrb/plugins/GUIScript/GUIScript.cpp
++++ b/gemrb/plugins/GUIScript/GUIScript.cpp
+@@ -4771,6 +4771,29 @@ static PyObject* GemRB_TextArea_GetScrollBar(PyObject* self, PyObject* args)
+ 	Py_RETURN_NONE;
+ }
+ 
++PyDoc_STRVAR(GemRB_TextArea_GetScrollInfo__doc,
++	     "===== TextArea_GetScrollInfo =====\n\
++\n\
++**Metaclass Prototype:** GetScrollInfo ()\n\
++\n\
++**Description:** Returns scroll state of the TextArea as a dict with keys: content, visible, pos.\n\
++\n\
++**Return value:** dict with int values");
++
++static PyObject* GemRB_TextArea_GetScrollInfo(PyObject* self, PyObject* args)
++{
++	PARSE_ARGS(args, "O", &self);
++	TextArea* ta = GetView<TextArea>(self);
++	ABORT_IF_NULL(ta);
++
++	auto info = ta->GetScrollInfo();
++	PyObject* dict = PyDict_New();
++	PyDict_SetItemString(dict, "content", PyLong_FromLong(info.contentHeight));
++	PyDict_SetItemString(dict, "visible", PyLong_FromLong(info.visibleHeight));
++	PyDict_SetItemString(dict, "pos", PyLong_FromLong(info.scrollPos));
++	return dict;
++}
++
+ PyDoc_STRVAR(GemRB_GetPartySize__doc,
+ 	     "===== GetPartySize =====\n\
+ \n\
+@@ -13060,6 +13083,7 @@ static PyMethodDef GemRBInternalMethods[] = {
+ 	METHOD(TextArea_ListResources, METH_VARARGS),
+ 	METHOD(TextArea_SetChapterText, METH_VARARGS),
+ 	METHOD(TextArea_GetScrollBar, METH_VARARGS),
++	METHOD(TextArea_GetScrollInfo, METH_VARARGS),
+ 	METHOD(TextArea_SetMargins, METH_VARARGS),
+ 	METHOD(TextArea_SetOptions, METH_VARARGS),
+ 	METHOD(TextEdit_SetBufferLength, METH_VARARGS),
