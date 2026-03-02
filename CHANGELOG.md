@@ -9,8 +9,41 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Upgraded to upstream master (commit bc6e075). Same GLES2 shader approach as Phase 2. Switched from SDL Controller API back to gptokeyb for input — TrimUI Brick has no analog sticks, so master's native GamepadControl (which requires sticks for cursor movement) doesn't work.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix)
-Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUIMG.py, GUIPR.py, GUISAVE.py, GUIOPT.py)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, map_pin_fix)
+Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, PortraitWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUIMG.py, GUIPR.py, GUISAVE.py, GUIOPT.py, GUIREC.py)
+
+---
+
+## 35. Fix Map Pins Bunched Together (PST autonote.ini Coordinate Bug)
+
+**Problem:** In the area map view, location pins (Mortuary, Mausoleum, etc.) were all clustered in the top-left corner instead of being spread across the map at their correct positions.
+
+**Root cause:** Two bugs in `AREImporter::GetAutomapNotes()`:
+
+1. **Missing coordinate conversion in INI path.** When `NoteCount == 0` (first visit to an area), map notes are loaded from `autonote.ini`. These coordinates are in **small-map pixel space** (e.g., x=136 on a 432px-wide minimap), but the code stored them directly as game-world coordinates without converting. `MapControl::ConvertPointFromGame()` then divides by the full map size (e.g., 4608), producing screen positions like `136 * 432 / 4608 ≈ 13px` — all pins collapse to the top-left corner.
+
+2. **Corrupted coordinates persist in saves.** After the first visit, notes are saved to the ARE file. The save path correctly converts game-world coords back to small-map space — but since the "game" coords were actually tiny small-map values, they get divided again, producing even smaller numbers (e.g., 3, 6, 12). On reload, these corrupted values are used, and the pins remain permanently wrong.
+
+**Fix (`map_pin_fix.patch`, AREImporter.cpp):**
+- Added small-map → game-world conversion to the `autonote.ini` loading path, matching the existing ARE loading path
+- Readonly system notes from saved ARE data are now skipped; they are always re-read from `autonote.ini` with correct coordinates. This repairs existing corrupted saves without requiring a new game.
+- User-added notes (readonly=false) are still loaded from the ARE save as before.
+
+**Requires rebuild** (C++ change).
+
+---
+
+## 34. Fix Level-Up Window Text Truncation (14px TTF Font Override)
+
+**Problem:** The level-up screen had text truncation — "SAVING THROWS" showed as "Saving...", thief skill labels overflowed, and the overview text was oversized. This happened because FONTDLG was changed from 14px BAM to 20px Literata TTF for better dialogue readability, but the CHU label widths in window 4 were designed for the smaller font.
+
+**Fix:**
+- Added `MEDIUMDLG` font entry to `fonts.2da` — Literata TTF at 14px, giving a TTF font that fits the CHU label dimensions
+- `GUIREC.py` overrides all level-up window labels and the overview TextArea to use `MEDIUMDLG`, preserving original yellow text colors
+
+**Files:** `custom_scripts/pst/GUIREC.py`, `device/games/pst/override/fonts.2da`
+
+No rebuild needed — Python overlay + 2DA.
 
 ---
 
