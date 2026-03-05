@@ -120,10 +120,10 @@ index 6ec3dd5..46bb95b 100644
  
  	enum TextAreaFlags {
 diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
-index 92a2b0c..3591f85 100644
+index d69be95..e602b06 100644
 --- a/gemrb/plugins/GUIScript/GUIScript.cpp
 +++ b/gemrb/plugins/GUIScript/GUIScript.cpp
-@@ -4771,6 +4771,29 @@ static PyObject* GemRB_TextArea_GetScrollBar(PyObject* self, PyObject* args)
+@@ -4784,6 +4784,29 @@ static PyObject* GemRB_TextArea_GetScrollBar(PyObject* self, PyObject* args)
  	Py_RETURN_NONE;
  }
  
@@ -153,7 +153,7 @@ index 92a2b0c..3591f85 100644
  PyDoc_STRVAR(GemRB_GetPartySize__doc,
  	     "===== GetPartySize =====\n\
  \n\
-@@ -13060,6 +13083,7 @@ static PyMethodDef GemRBInternalMethods[] = {
+@@ -13067,6 +13090,7 @@ static PyMethodDef GemRBInternalMethods[] = {
  	METHOD(TextArea_ListResources, METH_VARARGS),
  	METHOD(TextArea_SetChapterText, METH_VARARGS),
  	METHOD(TextArea_GetScrollBar, METH_VARARGS),

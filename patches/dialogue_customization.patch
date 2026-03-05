@@ -1,5 +1,5 @@
 diff --git a/gemrb/GUIScripts/GUIClasses.py b/gemrb/GUIScripts/GUIClasses.py
-index a7eea21..2ad253d 100644
+index 3fb2df6..3145e51 100644
 --- a/gemrb/GUIScripts/GUIClasses.py
 +++ b/gemrb/GUIScripts/GUIClasses.py
 @@ -301,6 +301,8 @@ class GTextArea(GControl, Scrollable):
@@ -31,19 +31,20 @@ index deeb10e..75700af 100644
  
  DisplayMessage::StrRefs DisplayMessage::SRefs;
 diff --git a/gemrb/core/GUI/ScrollBar.cpp b/gemrb/core/GUI/ScrollBar.cpp
-index abc1234..def5678 100644
+index ca566b9..45db10e 100644
 --- a/gemrb/core/GUI/ScrollBar.cpp
 +++ b/gemrb/core/GUI/ScrollBar.cpp
 @@ -21,6 +21,8 @@
  #include "ScrollBar.h"
-
+ 
  #include "GUI/EventMgr.h"
 +#include "Interface.h"
 +
  #include "Video/Video.h"
-
+ 
  namespace GemRB {
-@@ -257,11 +259,13 @@ bool ScrollBar::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
+@@ -257,13 +259,15 @@ bool ScrollBar::OnMouseDrag(const MouseEvent& me)
+ bool ScrollBar::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
  {
  	if (State == 0) {
 +		int scrollSpeed = core->GetDictionary().Get("Keyboard Scroll Speed", 64);
@@ -59,20 +60,21 @@ index abc1234..def5678 100644
 +				ScrollBySteps(steps);
  				return true;
  			case GEM_LEFT:
+ 				// TODO: implement horizontal scrollbars
 diff --git a/gemrb/core/GUI/ScrollView.cpp b/gemrb/core/GUI/ScrollView.cpp
-index 59494e8..22155aa 100644
+index 59494e8..cf9b267 100644
 --- a/gemrb/core/GUI/ScrollView.cpp
 +++ b/gemrb/core/GUI/ScrollView.cpp
 @@ -20,6 +20,7 @@
  #include "ScrollView.h"
-
+ 
  #include "GUIScriptInterface.h"
 +#include "Interface.h"
-
+ 
  #include "GUI/ScrollBar.h"
  #include "Logging/Logging.h"
 @@ -368,8 +369,7 @@ void ScrollView::ScrollTo(Point newP, ieDword duration)
-
+ 
  bool ScrollView::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
  {
 -	// TODO: get scroll amount from settings
@@ -94,7 +96,7 @@ index 9bfb9d8..e9986d6 100644
  	bool IsAnimated() const override { return static_cast<bool>(animation); }
  
 diff --git a/gemrb/core/GUI/TextArea.cpp b/gemrb/core/GUI/TextArea.cpp
-index c94f9bb..0aa7ecf 100644
+index 093ea3c..16235a1 100644
 --- a/gemrb/core/GUI/TextArea.cpp
 +++ b/gemrb/core/GUI/TextArea.cpp
 @@ -41,7 +41,7 @@ TextArea::SpanSelector::SpanSelector(TextArea& ta, const std::vector<const Strin
@@ -127,7 +129,7 @@ index c94f9bb..0aa7ecf 100644
  int TextArea::LineCount() const
  {
  	int rowHeight = LineHeight();
-@@ -700,10 +705,14 @@ void TextArea::SetSelectOptions(const std::vector<SelectOption>& opts, bool numb
+@@ -709,10 +714,14 @@ void TextArea::SetSelectOptions(const std::vector<SelectOption>& opts, bool numb
  	ContentContainer::Margin m;
  	Option_t selectIdx = -1;
  	if (dialogBeginNode) {
@@ -146,7 +148,7 @@ index c94f9bb..0aa7ecf 100644
  		m = ContentContainer::Margin(0, 3);
  		selectIdx = GetValue();
 diff --git a/gemrb/core/GUI/TextArea.h b/gemrb/core/GUI/TextArea.h
-index 6f20a00..c166e2b 100644
+index ca7d426..6ec3dd5 100644
 --- a/gemrb/core/GUI/TextArea.h
 +++ b/gemrb/core/GUI/TextArea.h
 @@ -178,6 +178,7 @@ public:
@@ -155,13 +157,13 @@ index 6f20a00..c166e2b 100644
  	void SetMargins(ContentContainer::Margin m);
 +	ScrollBar* GetScrollBar() const;
  
- 	/** Returns the selected text */
- 	String QueryText() const override;
+ 	void MarkDialogStart();
+ 	void ClearDialogStart() { dialogScrollTarget = -1; }
 diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
-index f6b14d1..d70edd5 100644
+index 8efbde7..d69be95 100644
 --- a/gemrb/plugins/GUIScript/GUIScript.cpp
 +++ b/gemrb/plugins/GUIScript/GUIScript.cpp
-@@ -4721,6 +4721,56 @@ static PyObject* GemRB_TextArea_SetOptions(PyObject* self, PyObject* args)
+@@ -4734,6 +4734,56 @@ static PyObject* GemRB_TextArea_SetOptions(PyObject* self, PyObject* args)
  	Py_RETURN_NONE;
  }
  
@@ -218,7 +220,7 @@ index f6b14d1..d70edd5 100644
  PyDoc_STRVAR(GemRB_GetPartySize__doc,
  	     "===== GetPartySize =====\n\
  \n\
-@@ -13003,6 +13053,8 @@ static PyMethodDef GemRBInternalMethods[] = {
+@@ -13016,6 +13066,8 @@ static PyMethodDef GemRBInternalMethods[] = {
  	METHOD(TextArea_Append, METH_VARARGS),
  	METHOD(TextArea_ListResources, METH_VARARGS),
  	METHOD(TextArea_SetChapterText, METH_VARARGS),

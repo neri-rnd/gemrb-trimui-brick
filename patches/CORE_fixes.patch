@@ -33,7 +33,7 @@ index 400c41c..ad74b21 100644
  		return true;
  	}
 diff --git a/gemrb/core/Inventory.cpp b/gemrb/core/Inventory.cpp
-index b9c4af2..dde484b 100644
+index 5d6b61d..beecf5b 100644
 --- a/gemrb/core/Inventory.cpp
 +++ b/gemrb/core/Inventory.cpp
 @@ -1006,6 +1006,10 @@ bool Inventory::EquipItem(ieDword slot)
@@ -47,31 +47,11 @@ index b9c4af2..dde484b 100644
  				gamedata->FreeItem(itm, item->ItemResRef, false);
  				return false;
  			}
-diff --git a/gemrb/core/Scriptable/Actor.cpp b/gemrb/core/Scriptable/Actor.cpp
-index cb3a725..3d03580 100644
---- a/gemrb/core/Scriptable/Actor.cpp
-+++ b/gemrb/core/Scriptable/Actor.cpp
-@@ -7833,6 +7833,15 @@ void Actor::UpdateActorState()
- 	}
- 
- 	if (anim.empty()) {
-+		// Animation data missing for current stance (e.g. Morte has no CONJURE BAM).
-+		// Try the auto-switch that GetAnimation() set up, so the actor transitions
-+		// to a valid stance instead of staying invisible forever.
-+		CharAnimations* ca = GetAnims();
-+		if (ca && ca->autoSwitchOnEnd) {
-+			HandleActorStance();
-+		} else {
-+			SetStance(IE_ANI_AWAKE);
-+		}
- 		UpdateModalState(game->GameTime);
- 		return;
- 	}
 diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
-index d536d9a..8964c19 100644
+index 8efbde7..f494569 100644
 --- a/gemrb/plugins/GUIScript/GUIScript.cpp
 +++ b/gemrb/plugins/GUIScript/GUIScript.cpp
-@@ -9343,6 +9343,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
+@@ -9356,6 +9356,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
  		}
  		si = TryToUnequip(actor, core->QuerySlot(Slot), Count);
  		actor->RefreshEffects();

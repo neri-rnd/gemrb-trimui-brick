@@ -45,7 +45,6 @@ import CommonTables
 import LevelUp
 import LUCommon
 import GUICommonWindows
-import GUIRECCommon
 import NewLife
 import PartyReform
 from GUIDefines import *
@@ -449,6 +448,8 @@ def GetNextLevelExp (Level, Class):
 
 
 def GetStatOverview (pc):
+	import GUIRECCommon
+
 	won = "[color=FFFFFF]"
 	woff = "[/color]"
 

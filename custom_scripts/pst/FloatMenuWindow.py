@@ -30,12 +30,6 @@ from GUIDefines import *
 from ie_stats import *
 from ie_action import *
 
-import GUIMA
-import GUIJRNL
-import GUIINV
-import GUIREC
-import GUIMG
-import GUIPR
 
 FloatMenuWindow = None
 
@@ -69,10 +63,11 @@ float_menu_selected = None
 spelltype = None
 
 def UseSpell ():
+	global spelltype
 	pc = GemRB.GameGetFirstSelectedPC ()
 	slot = float_menu_selected+float_menu_index
 	print("spell", spelltype, slot)
-	GemRB.SpellCast (pc, 1<<type, slot)
+	GemRB.SpellCast (pc, spelltype, slot)
 	return
 
 def UseItem ():
@@ -98,14 +93,20 @@ def DoSingleAction (btn):
 	i = btn.Value
 	OpenFloatMenuWindow ()
 	if i == 0:
+		import GUIMA
 		GUIMA.OpenMapWindow ()
 	elif i == 1:
+		import GUIJRNL
 		GUIJRNL.OpenJournalWindow ()
 	elif i == 2:
+		import GUIINV
 		GUIINV.OpenInventoryWindow ()
 	elif i == 3:
+		import GUIREC
 		GUIREC.OpenRecordsWindow ()
 	elif i == 4:
+		import GUIMG
+		import GUIPR
 		pc = GemRB.GameGetFirstSelectedPC ()
 		ClassName = GUICommon.GetClassRowName (pc)
 		if CommonTables.ClassSkills.GetValue (ClassName, "CLERICSPELL") == "*":
@@ -324,7 +325,7 @@ def UpdateFloatMenuGroupAction (i):
 	Button.SetState (IE_GUI_BUTTON_ENABLED)
 
 def RefreshSpellList(pc, innate):
-	global spell_list, type
+	global spell_list, spelltype
 
 	if innate:
 		spelltype = IE_SPELL_TYPE_INNATE
@@ -418,8 +419,7 @@ def UpdateFloatMenuSpell (pc, i):
 	Button.SetFlags (IE_GUI_BUTTON_PICTURE, OP_OR) # make relative anchors work
 
 	def CloseOnPress (callback):
-		if GUICommon.UsingTouchInput ():
-			FloatMenuWindow.Close ()
+		FloatMenuWindow.Close ()
 		callback ()
 
 	if i + float_menu_index < len (spell_list):

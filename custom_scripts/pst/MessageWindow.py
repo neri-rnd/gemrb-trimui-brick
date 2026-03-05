@@ -210,10 +210,10 @@ def UpdateControlStatus ():
 			if v:
 				v.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_OR)
 
-		# Enable keyboard events — focus scrollbar (it CAN lock focus, unlike ScrollView)
+		# Enable events on MWindow for dialogue interaction
 		MWindow.SetFlags(IE_GUI_VIEW_IGNORE_EVENTS, OP_NAND)
+		# Focus scrollbar for keyboard scroll (it CAN lock focus, unlike ScrollView)
 		MessageTA = MWindow.GetControl(1)
-		MessageTA.SetFlags(IE_GUI_VIEW_IGNORE_EVENTS, OP_NAND)
 		MWindow.Focus()
 		sb = MessageTA.GetScrollBar()
 		if sb:
