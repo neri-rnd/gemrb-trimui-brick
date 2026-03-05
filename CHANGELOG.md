@@ -9,10 +9,22 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes, audit3_fixes)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
 
 ---
+
+## 41. Upstream bug audit round 3 — GetContainerItem dict leak
+
+**Problem:** Third-pass audit focusing on float menu, item use, spell casting, and related Python/C++ flows. Found 1 confirmed C++ bug (plus 2 upstream Python bugs already fixed in our FloatMenuWindow.py override).
+
+**Fix (`audit3_fixes.patch`):**
+
+1. **GUIScript.cpp `GetContainerItem` — dict leak on unresolvable item:** `PyDict_New()` creates a dict populated with 5 entries (ItemResRef, Usages0-2, Flags), then calls `gamedata->GetItem()`. If the item ResRef doesn't resolve (corrupted save, mod remnant), the function returns `Py_RETURN_NONE` without freeing the dict — leaking the dict header + 5 PyObject values. Fix: add `Py_DecRef(dict)` before the early return. PST-reachable via Container.py calling `GemRB.GetContainerItem()` for each container slot.
+
+**Upstream Python bugs (already fixed in our override):** FloatMenuWindow.py `UseSpell` uses `type` (Python builtin) instead of `spelltype` — would crash on any spell cast from float menu. `RefreshSpellList` declares `global type` instead of `global spelltype` — the global never gets updated.
+
+**Verified false positives:** TryUsingMagicDevice null deref (IWD2-only code path), QuickSpells OOB (constrained by Python UI), Inventory Usages logic (intentional fallback), GetSpell/GetExtHeader null (requires corrupted SPL), GetSlotItem PCStats null (PST PCs always have it), float menu spell wrap off-by-one (correct — compensates for subsequent -1), float_menu_selected negative (intentional absolute index preservation).
 
 ## 40. Upstream bug audit round 2 — ChunkActor null deref + SetPLT key leak
 

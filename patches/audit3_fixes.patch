@@ -1,0 +1,12 @@
+diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
+index 8e6a6c8..a1b2c3d 100644
+--- a/gemrb/plugins/GUIScript/GUIScript.cpp
++++ b/gemrb/plugins/GUIScript/GUIScript.cpp
+@@ -6835,6 +6835,7 @@ static PyObject* GemRB_GetContainerItem(PyObject* /*self*/, PyObject* args)
+ 	const Item* item = gamedata->GetItem(ci->ItemResRef, true);
+ 	if (!item) {
+ 		Log(MESSAGE, "GUIScript", "Cannot find container ({}) item {}!", container->GetScriptName(), ci->ItemResRef);
++		Py_DecRef(dict);
+ 		Py_RETURN_NONE;
+ 	}
+
