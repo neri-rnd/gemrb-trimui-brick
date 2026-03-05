@@ -311,10 +311,17 @@ def UpdateFloatMenuSingleAction (i):
 	Button.OnPress (DoSingleAction)
 
 
+def _GroupActionPress(callback):
+	FloatMenuWindow.Close ()
+	callback ()
+
 def UpdateFloatMenuGroupAction (i):
 	Window = FloatMenuWindow
 
 	butts = [ ACT_DEFEND, ACT_TALK, ACT_ATTACK, ACT_STOP, ACT_SEARCH ]
+	acts = [ ActionsWindow.ActionDefendPressed, ActionsWindow.ActionTalkPressed,
+	         ActionsWindow.ActionAttackPressed, ActionsWindow.ActionStopPressed,
+	         ActionsWindow.ActionSearchPressed ]
 	# Guard
 	# Initiate dialogue
 	# Attack
@@ -322,6 +329,7 @@ def UpdateFloatMenuGroupAction (i):
 	Button = Window.GetControl (CID_SLOTS + i)
 
 	Button.SetActionIcon (globals(), butts[i], i+1 )
+	Button.OnPress (lambda btn=None, cb=acts[i]: _GroupActionPress(cb))
 	Button.SetState (IE_GUI_BUTTON_ENABLED)
 
 def RefreshSpellList(pc, innate):
@@ -366,8 +374,8 @@ def UpdateFloatMenuItem (pc, i, weapons):
 
 	# Weapons - the last action is 'Guard'
 	if weapons and i==4:
-		# FIXME: rather call UpdateFloatMenuGroupAction?
 		Button.SetActionIcon (globals(), ACT_DEFEND)
+		Button.OnPress (lambda btn=None: _GroupActionPress(ActionsWindow.ActionDefendPressed))
 		Button.SetState (IE_GUI_BUTTON_ENABLED)
 		return
 		

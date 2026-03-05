@@ -14,6 +14,14 @@ Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Con
 
 ---
 
+## 43. Fix float menu group/action buttons doing nothing
+
+**Problem:** When multiple PCs are selected and the float menu opens in GROUP mode, the 5 action buttons (Guard, Dialogue, Attack, Stop, Search) display correctly but clicking them does nothing. Same issue with the Guard button in weapon mode. Upstream bug.
+
+**Root cause:** `UpdateFloatMenuGroupAction` calls `Button.SetActionIcon(globals(), ...)` which constructs callback names like `"ActionDefendPressed"` and looks them up in the passed dict via `PyDict_GetItem`. But `globals()` is FloatMenuWindow.py's namespace — the callbacks are defined in `ActionsWindow.py`. The lookup returns NULL, and `PythonControlCallback(NULL)` silently creates a no-op callback.
+
+**Fix (`custom_scripts/pst/FloatMenuWindow.py`):** Add explicit `Button.OnPress(...)` callbacks after `SetActionIcon` in both `UpdateFloatMenuGroupAction` (all 5 group action slots) and the weapon mode Guard button. `SetActionIcon` is kept for visual setup (icons, tooltips, hotkeys). Added `_GroupActionPress` helper that closes the menu then fires the action callback — same pattern used by the working thieving/spell buttons.
+
 ## 42. Fix upstream spell tint persisting forever
 
 **Problem:** Casting a spell that applies a color tint (opcode 0x08 Color:SetRGB with location=0xff, or Color:SetRGBGlobal) causes the tint to persist on the character forever instead of clearing when the effect expires. Upstream bug in `CharAnimations::CheckColorMod()`.
