@@ -9,10 +9,22 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
 
 ---
+
+## 40. Upstream bug audit round 2 — ChunkActor null deref + SetPLT key leak
+
+**Problem:** Second-pass audit of upstream GemRB (commit 3a52c5fd48) after fixing the major leak classes in #39. Found 2 confirmed bugs out of ~40 candidates examined across Actor.cpp, Actions.cpp, Matching.cpp, Map.cpp, Game.cpp, Inventory.cpp, and GUIScript.cpp.
+
+**Fix (`audit2_fixes.patch`):**
+
+1. **Actor.cpp `ChunkActor` — null map dereference (PST-reachable):** `GetCurrentArea()` can return NULL during area transitions. `ChunkActor` immediately dereferences it via `map->IsVisible()` without a null check. If an actor dies with gore enabled while between areas, this crashes. Fix: add `if (!map) return;` before the `IsVisible` call, matching the existing pattern in `pcf_avatarremoval`.
+
+2. **GUIScript.cpp `Button_SetPLT` — PyLong dict key leak (not PST-reachable):** `PyDict_GetItem(colors, PyLong_FromLong(keys[i]))` creates a temporary PyLong that is never freed. PyDict_GetItem only borrows a reference to the value; the key is simply abandoned. Leaks 8 PyLong objects per SetPLT call. Fix: extract to temp variable + `Py_DecRef(key)`. Only affects BG1/BG2/IWD (PST has no paper dolls).
+
+**Verified false positives:** PythonControlCallback NULL (safe by design), IE_CLASS=0 OOB (classless creatures skip RefreshHP), IE_MAXHITPOINTS div-by-zero (all actors have positive max HP), stealth div-by-zero (constant denominator), bit shift OOB (bounded spell schools), FindPC(1)/GetPC() null (guaranteed valid in PST). ~30 additional `GetCurrentArea()` null derefs in Actions/Matching are real but unreachable during normal script execution.
 
 ## 39. Fix upstream memory leaks — PyObject refs + Item cache refcounts
 
