@@ -1,0 +1,12 @@
+diff --git a/gemrb/core/CharAnimations.cpp b/gemrb/core/CharAnimations.cpp
+index 0423a38..42867ef 100644
+--- a/gemrb/core/CharAnimations.cpp
++++ b/gemrb/core/CharAnimations.cpp
+@@ -490,6 +490,7 @@ void CharAnimations::SetColors(const ieDword* arg)
+
+ void CharAnimations::CheckColorMod()
+ {
++	GlobalColorMod.locked = false;
+ 	if (!GlobalColorMod.locked && GlobalColorMod.type != RGBModifier::NONE) {
+ 		GlobalColorMod.type = RGBModifier::NONE;
+ 		GlobalColorMod.speed = 0;

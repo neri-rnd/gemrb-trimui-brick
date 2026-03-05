@@ -9,10 +9,18 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes, audit3_fixes)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes, audit3_fixes, colormod_fix)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
 
 ---
+
+## 42. Fix upstream spell tint persisting forever
+
+**Problem:** Casting a spell that applies a color tint (opcode 0x08 Color:SetRGB with location=0xff, or Color:SetRGBGlobal) causes the tint to persist on the character forever instead of clearing when the effect expires. Upstream bug in `CharAnimations::CheckColorMod()`.
+
+**Root cause:** Asymmetry between global and local ColorMod clearing. Local mods check `!phase` (phase=0 for permanent effects → clears correctly). Global mod checks `!locked` — but `SetColorMod(phase=0)` sets `locked=true`, and nothing ever resets it for permanent effects (speed=-1). `PulseRGBModifiers` only resets locked inside a `speed > 0` block, unreachable for permanent tints.
+
+**Fix (`colormod_fix.patch`):** Add `GlobalColorMod.locked = false;` at the start of `CheckColorMod()`. Each tick, the lock is reset; active effects re-lock via `ApplyAllEffects → fx_set_color_rgb → SetColorMod`. Expired effects don't re-lock, so the existing `!locked` check clears the mod. No visual flicker — rendering happens after both CheckColorMod and ApplyAllEffects complete.
 
 ## 41. Upstream bug audit round 3 — GetContainerItem dict leak
 
