@@ -144,9 +144,9 @@ index d69be95..e602b06 100644
 +
 +	auto info = ta->GetScrollInfo();
 +	PyObject* dict = PyDict_New();
-+	PyDict_SetItemString(dict, "content", PyLong_FromLong(info.contentHeight));
-+	PyDict_SetItemString(dict, "visible", PyLong_FromLong(info.visibleHeight));
-+	PyDict_SetItemString(dict, "pos", PyLong_FromLong(info.scrollPos));
++	PyDict_SetItemString(dict, "content", DecRef(PyLong_FromLong, info.contentHeight));
++	PyDict_SetItemString(dict, "visible", DecRef(PyLong_FromLong, info.visibleHeight));
++	PyDict_SetItemString(dict, "pos", DecRef(PyLong_FromLong, info.scrollPos));
 +	return dict;
 +}
 +

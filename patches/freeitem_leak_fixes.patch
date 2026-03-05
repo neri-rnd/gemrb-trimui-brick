@@ -1,0 +1,161 @@
+diff --git a/gemrb/core/GameScript/Actions.cpp b/gemrb/core/GameScript/Actions.cpp
+index b2503e0..9f9c788 100644
+--- a/gemrb/core/GameScript/Actions.cpp
++++ b/gemrb/core/GameScript/Actions.cpp
+@@ -6860,6 +6860,7 @@ void GameScript::UseItem(Scriptable* Sender, Action* parameters)
+ 	}
+ 	const ITMExtHeader* hh = itm->GetExtHeader(header);
+ 	if (!hh) {
++		gamedata->FreeItem(itm, itemres, false);
+ 		Sender->ReleaseCurrentAction();
+ 		return;
+ 	}
+@@ -6869,11 +6870,13 @@ void GameScript::UseItem(Scriptable* Sender, Action* parameters)
+ 		if (!target || target->ValidTarget(GA_NO_DEAD) ||
+ 		    (target->InParty == 0 && (inactive || removed)) ||
+ 		    (target->InParty && removed)) {
++			gamedata->FreeItem(itm, itemres, false);
+ 			Sender->ReleaseCurrentAction();
+ 			return;
+ 		}
+ 	} else {
+ 		if ((target && target->GetStat(IE_AVATARREMOVAL)) || inactive) {
++			gamedata->FreeItem(itm, itemres, false);
+ 			Sender->ReleaseCurrentAction();
+ 			return;
+ 		}
+diff --git a/gemrb/core/Interface.cpp b/gemrb/core/Interface.cpp
+index 419c95f..bde3ee5 100644
+--- a/gemrb/core/Interface.cpp
++++ b/gemrb/core/Interface.cpp
+@@ -204,6 +204,7 @@ ItemDragOp::ItemDragOp(CREItem* item)
+ 		// use any / the smaller icon if the dragging one is unavailable
+ 		pic = gamedata->GetBAMSprite(i->ItemIcon, -1, 0);
+ 	}
++	gamedata->FreeItem(i, item->ItemResRef, false);
+ 
+ 	cursor = std::move(pic);
+ 
+diff --git a/gemrb/core/Inventory.cpp b/gemrb/core/Inventory.cpp
+index 5d6b61d..aabecb8 100644
+--- a/gemrb/core/Inventory.cpp
++++ b/gemrb/core/Inventory.cpp
+@@ -993,7 +993,10 @@ bool Inventory::EquipItem(ieDword slot)
+ 				}
+ 			}
+ 			header = itm->GetExtHeader(newHeader);
+-			if (!header) return false; // in case of broken saves
++			if (!header) { // in case of broken saves
++				gamedata->FreeItem(itm, item->ItemResRef, false);
++				return false;
++			}
+ 			if (header->AttackType == ITEM_AT_BOW || (header->AttackType == ITEM_AT_PROJECTILE && !header->Charges)) {
+ 				// find the ranged projectile associated with it, this returns equipped code
+ 				equip = FindRangedProjectile(header->ProjectileQualifier);
+@@ -1019,7 +1022,10 @@ bool Inventory::EquipItem(ieDword slot)
+ 			//Get the ranged header of the projectile (so we theoretically allow shooting of daggers)
+ 			newHeader = itm->GetWeaponHeaderNumber(true);
+ 			header = itm->GetExtHeader(newHeader);
+-			if (!header) return false; // in case of broken saves
++			if (!header) { // in case of broken saves
++				gamedata->FreeItem(itm, item->ItemResRef, false);
++				return false;
++			}
+ 			weaponslot = FindTypedRangedWeapon(header->ProjectileQualifier);
+ 			if (weaponslot == SLOT_FIST || (Equipped == ieWordSigned(slot - SLOT_MELEE) && EquippedHeader == newHeader)) {
+ 				gamedata->FreeItem(itm, item->ItemResRef, false);
+@@ -1394,7 +1400,9 @@ const ITMExtHeader* Inventory::GetEquippedExtHeader(int header) const
+ 	if (!itm) return NULL;
+ 	const Item* item = gamedata->GetItem(itm->ItemResRef, true);
+ 	if (!item) return NULL;
+-	return item->GetExtHeader(header);
++	const ITMExtHeader* ext = item->GetExtHeader(header);
++	gamedata->FreeItem(item, itm->ItemResRef, false);
++	return ext;
+ }
+ 
+ void Inventory::SetEquipped(ieWordSigned slot, ieWord header)
+@@ -1463,7 +1471,10 @@ void Inventory::CacheWeaponInfo(bool leftOrRight) const
+ 	}
+ 	hittingHeader = item->GetExtHeader(headerIdx);
+ 
+-	if (!hittingHeader) return; // ar2808 elf has the misc3b moonblade equipped ... and it has no headers
++	if (!hittingHeader) { // ar2808 elf has the misc3b moonblade equipped ... and it has no headers
++		gamedata->FreeItem(item, weapon->ItemResRef, false);
++		return;
++	}
+ 	if (hittingHeader->AttackType == ITEM_AT_PROJECTILE) ranged = true; // throwing weapon
+ 
+ 	if (ranged) {
+@@ -2194,6 +2205,7 @@ void Inventory::EnforceUsability()
+ 
+ 		// use CanUseItemType if this turns out to be insufficient
+ 		HCStrings idx = Owner->Unusable(item);
++		gamedata->FreeItem(item, itm->ItemResRef, false);
+ 		if (idx == HCStrings::count) continue;
+ 
+ 		// pst-only feedback: unusable item placed {in backpack, on the ground}
+diff --git a/gemrb/core/Map.cpp b/gemrb/core/Map.cpp
+index 3d6a405..027f430 100644
+--- a/gemrb/core/Map.cpp
++++ b/gemrb/core/Map.cpp
+@@ -2394,7 +2394,11 @@ Actor* Map::GetItemByDialog(const ResRef& resref) const
+ 		if (!citem) continue;
+ 		const Item* item = gamedata->GetItem(citem->ItemResRef);
+ 		if (!item) continue;
+-		if (item->Dialog != resref) continue;
++		if (item->Dialog != resref) {
++			gamedata->FreeItem(item, citem->ItemResRef, false);
++			continue;
++		}
++		gamedata->FreeItem(item, citem->ItemResRef, false);
+ 
+ 		// finally, spawn (dmhead.cre) from our override as a substitute talker
+ 		// the cre file is set up to be invisible, invincible and immune to several things
+diff --git a/gemrb/core/Scriptable/Actor.cpp b/gemrb/core/Scriptable/Actor.cpp
+index a8a3a90..bd364d8 100644
+--- a/gemrb/core/Scriptable/Actor.cpp
++++ b/gemrb/core/Scriptable/Actor.cpp
+@@ -5921,7 +5921,10 @@ void Actor::GetItemSlotInfo(ItemExtHeader* item, int which, int header) const
+ 	}
+ 	const ITMExtHeader* ext_header = itm->GetExtHeader(headerindex);
+ 	//item has no extended header, or header index is wrong
+-	if (!ext_header) return;
++	if (!ext_header) {
++		gamedata->FreeItem(itm, slot->ItemResRef, false);
++		return;
++	}
+ 	item->CopyITMExtHeader(*ext_header);
+ 	item->itemName = slot->ItemResRef;
+ 	item->slot = idx;
+@@ -11622,9 +11625,9 @@ char Actor::GetArmorCode() const
+ 	const Item* item = gamedata->GetItem(itm->ItemResRef, true);
+ 	if (!item) return '1';
+ 	bool wearingRobes = item->AnimationType[1] == 'W';
+-
+-	if (mageAnimation ^ wearingRobes) return '1';
+-	return item->AnimationType[0];
++	char code = (mageAnimation ^ wearingRobes) ? '1' : item->AnimationType[0];
++	gamedata->FreeItem(item, itm->ItemResRef, false);
++	return code;
+ }
+ 
+ ResRef Actor::GetArmorSound() const
+diff --git a/gemrb/plugins/STOImporter/STOImporter.cpp b/gemrb/plugins/STOImporter/STOImporter.cpp
+index 1578aaa..f4e779f 100644
+--- a/gemrb/plugins/STOImporter/STOImporter.cpp
++++ b/gemrb/plugins/STOImporter/STOImporter.cpp
+@@ -127,9 +127,13 @@ Store* STOImporter::GetStore(Store* s)
+ 		const Item* itm = gamedata->GetItem(item->ItemResRef, true);
+ 		// some iwd2 stores like 60sheemi contain crap
+ 		if (itm && signed(itm->ItemNameIdentified) == -1) {
++			gamedata->FreeItem(itm, item->ItemResRef, false);
+ 			toDelete.push_back(item);
+ 			continue;
+ 		}
++		if (itm) {
++			gamedata->FreeItem(itm, item->ItemResRef, false);
++		}
+ 		//it is important to handle this field as signed
+ 		if (item->InfiniteSupply > 0) {
+ 			std::string TriggerCode = core->GetMBString((ieStrRef) item->InfiniteSupply);

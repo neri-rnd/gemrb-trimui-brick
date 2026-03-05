@@ -9,10 +9,37 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, map_pin_fix, dialogue_scroll_fix, dialogue_footer)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
 
 ---
+
+## 39. Fix upstream memory leaks — PyObject refs + Item cache refcounts
+
+**Problem:** Deep audit of upstream GemRB (commit 3a52c5fd48) found two systematic bug classes causing unbounded memory growth during gameplay — especially impactful on the 1GB TrimUI Brick:
+
+1. **PyObject reference leaks in GUIScript.cpp:** `PyDict_SetItemString()` does NOT steal references, but many callsites pass bare `Py*_From*()` without the codebase's own `DecRef` RAII wrapper. ~100 leaked PyObjects across 17 functions, including high-frequency paths like `GetSlotItem` (8/call), `GetCombatInfo` (~47/call), `GetSpell` (15/call), and `GetItem` (6/call). Also includes an error-path dict leak in `GetCombatInfo` and sub-dict/tuple leaks not DecRef'd after `PyDict_SetItemString`.
+
+2. **Item cache refcount leaks (missing `FreeItem`):** `gamedata->GetItem()` increments a cache refcount; `gamedata->FreeItem()` decrements it. Missing `FreeItem` on any code path = item never evicted from cache. Found 11 leak sites across Actor.cpp, Interface.cpp, STOImporter.cpp, Inventory.cpp, Actions.cpp, Map.cpp, and GUIScript.cpp.
+
+**Fix (`pyobject_leak_fixes.patch`):**
+- Wrap all bare `PyLong_FromLong()`, `PyString_FromResRef()`, `PyBool_FromLong()`, `PyString_FromStringObj()`, `PyObject_FromHolder()` calls in `DecRef()` RAII wrapper when passed to `PyDict_SetItemString()`
+- Add `Py_DecRef()` for tuples and sub-dicts after insertion into parent dict (GetPCStats 6 tuples, GetStoreInfo 2 tuples, GetCombatInfo ac/tohits/alldos sub-containers)
+- Fix error-path dict leak in `GetCombatInfo` (`Py_DecRef(dict)` before `RuntimeError()`)
+- Fix `PyList_Append` leak in module init (use temp variable + `Py_DecRef`)
+- Fix 2 missing `FreeItem` calls in `DragItem` (cursed item and CRI_EQUIP early returns)
+
+**Fix (`freeitem_leak_fixes.patch`):**
+- `Actor::GetArmorCode()`: Restructure to single return with `FreeItem` (was leaking on every armor sound lookup)
+- `Actor::GetItemInfo()`: Add `FreeItem` on `!ext_header` early return
+- `Interface::ItemDragOp()`: Add `FreeItem` after reading icon sprites (was leaking on every inventory drag)
+- `STOImporter::GetStore()`: Add `FreeItem` in item loop — both invalid-item and normal paths
+- `Inventory::EnforceUsability()`: Add `FreeItem` after `Unusable()` check, before continue
+- `Inventory::GetEquippedExtHeader()`: Add `FreeItem(false)` after extracting ext header pointer (safe — cache retains item)
+- `Inventory::EquipItem()`: Add `FreeItem` on 2 broken-save `!header` early returns
+- `Inventory::CacheWeaponInfo()`: Add `FreeItem` on `!hittingHeader` early return
+- `Actions::UseItem()`: Add `FreeItem` on 3 early return paths (`!hh`, dead target, avatar removal)
+- `Map::GetItemByDialog()`: Add `FreeItem` on dialog mismatch continue + match path
 
 ## 38. Dialogue "Scroll Down" Indicator
 
