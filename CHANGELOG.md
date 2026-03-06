@@ -14,6 +14,18 @@ Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Con
 
 ---
 
+## 47. Switch audio driver to sdlaudio
+
+**Problem:** OpenAL Soft's connection to the sound server breaks during gameplay, causing `[ALSOFT] (EE) available update failed: Broken pipe` to spam every frame. This I/O kills performance.
+
+**Fix (device `GemRB.cfg`):** Set `AudioDriver = sdlaudio`. SDL audio is simpler and more reliable on MuOS/TrimUI Brick.
+
+## 46. Remove debug logging from video_fix.patch
+
+**Problem:** Three `Log(MESSAGE, ...)` calls left from debugging in `video_fix.patch` — especially `RenderOnDisplay` which fired every frame for every render region, generating 281K log lines and hammering flash I/O on the device.
+
+**Fix (`patches/video_fix.patch`):** Removed all three debug log statements (VideoBuffer, RenderOnDisplay, CopyPixels CONVERT). Kept the actual functional fixes (RGB555 fallback, TBDR render target unbind, inputpitch fix).
+
 ## 45. Fix upstream spell cast crash with corrupted SpellIndex
 
 **Problem:** Casting certain abilities (e.g., TNO's Raise Dead) from the float menu fails with `RuntimeError: Wrong type of spell!` and a blank spell name. The ability appears in the list but clicking it does nothing. Upstream bug.
