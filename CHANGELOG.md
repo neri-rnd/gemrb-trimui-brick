@@ -9,10 +9,26 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes, audit3_fixes, colormod_fix, spellindex_fix)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes, audit3_fixes, colormod_fix, spellindex_fix, guireccommon_fix)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
 
 ---
+
+## 50. Records stats panel 14px font
+
+**Fix (`custom_scripts/pst/GUIREC.py`):** Set stats overview textarea (control 0) to MEDIUMDLG (14px Literata TTF) in `InitRecordsWindow`, matching the level-up window font size.
+
+## 49. Swap Select/Menu button mapping
+
+**Fix (`device/gemrb.gptk`):** Select = Options (`o`), Menu = Quick Save (`q`). Previously swapped.
+
+## 48. Fix Records stats panel blank — upstream PaperDoll import crash
+
+**Problem:** Records screen stats panel (Current State, AC Bonuses, Resistances, Proficiencies, Saving Throws, Weapon Proficiencies, Ability Bonuses) is completely blank. Upstream bug introduced between base commits `0783b3e` and `3a52c5fd48`.
+
+**Root cause:** Upstream added `import PaperDoll` to `GUIRECCommon.py` at module level. `PaperDoll.py` does `GemRB.LoadTable("clowncol")` at module level — PST doesn't have `clowncol.2da`, so importing GUIRECCommon crashes. Our `GetStatOverview()` lazily imports GUIRECCommon → crash → silently swallowed by C++ → stats textarea stays blank.
+
+**Fix (`patches/guireccommon_fix.patch`):** Move `import PaperDoll` from module-level to a lazy import inside `OpenCustomizeWindow()` — the only function that uses it. PST never calls this function (no customize button in PST Records).
 
 ## 47. Switch audio driver to sdlaudio
 

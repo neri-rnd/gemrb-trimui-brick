@@ -118,6 +118,10 @@ def InitRecordsWindow (Window):
 	Button.OnMouseEnter (OnRecordsHelpHitPoints)
 	Button.OnMouseLeave (OnRecordsButtonLeave)
 
+	# TrimUI Brick: stats overview textarea — use 14px Literata (MEDIUMDLG)
+	Text = Window.GetControl (0)
+	Text.SetFont("MEDIUMDLG")
+
 	return
 
 

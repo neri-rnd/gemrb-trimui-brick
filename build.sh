@@ -4,7 +4,7 @@ set -e
 # =============================================================================
 # GemRB Master (3a52c5fd48) Build — TrimUI Brick / MuOS
 #
-# Builds upstream master (3a52c5fd48) with 6 compatibility patches:
+# Builds upstream master (3a52c5fd48) with 7 compatibility patches:
 #   - CORE_fixes: OnMouseDrag crash fix, Esc-in-dialog block, weapon anim on equip/remove
 #   - GLES2_fixes: hardcode OPENGLES2_FOUND for Docker build
 #   - GLES2_shader_fix: GLES2 attribute bindings, projection matrix, vertex shader
@@ -26,7 +26,7 @@ echo "=== GemRB Master ($GEMRB_COMMIT) Builder ==="
 echo ""
 
 # Verify patches exist
-for patch in CORE_fixes.patch GLES2_fixes.diff GLES2_shader_fix.patch dialogue_customization.patch video_fix.patch dialogue_footer.patch; do
+for patch in CORE_fixes.patch GLES2_fixes.diff GLES2_shader_fix.patch dialogue_customization.patch video_fix.patch dialogue_footer.patch guireccommon_fix.patch; do
     if [ ! -f "$PATCH_DIR/$patch" ]; then
         echo "ERROR: Missing patch: $PATCH_DIR/$patch"
         exit 1
@@ -75,6 +75,10 @@ echo "    Applied video_fix.patch"
 echo ">>> Applying dialogue_footer (TextArea scroll info for footer arrow)..."
 git apply "$PATCH_DIR/dialogue_footer.patch"
 echo "    Applied dialogue_footer.patch"
+
+echo ">>> Applying guireccommon_fix (lazy PaperDoll import — fixes PST stats panel)..."
+git apply "$PATCH_DIR/guireccommon_fix.patch"
+echo "    Applied guireccommon_fix.patch"
 
 cd "$SCRIPT_DIR"
 

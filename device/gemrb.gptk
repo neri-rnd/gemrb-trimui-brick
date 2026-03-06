@@ -4,8 +4,8 @@
 # X = Center Character Y = Right click (radial menu)
 # L1 = Scroll up       L2 = Scroll down
 # R1 = Highlight       R2 = Wizard Spells
-# Start = Pause        Select = Quick Save
-# Menu = Options
+# Start = Pause        Select = Options
+# Menu = Quick Save
 # Left LED = Inventory Right LED = Map
 # D-pad = Mouse cursor
 
@@ -26,8 +26,8 @@ r1 = tab
 r2 = w
 
 start = space
-back = q
-guide = o
+back = o
+guide = q
 
 l3 = i
 r3 = m
