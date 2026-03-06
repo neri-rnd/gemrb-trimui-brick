@@ -9,10 +9,24 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes, audit3_fixes, colormod_fix)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes, audit3_fixes, colormod_fix, spellindex_fix)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
 
 ---
+
+## 45. Fix upstream spell cast crash with corrupted SpellIndex
+
+**Problem:** Casting certain abilities (e.g., TNO's Raise Dead) from the float menu fails with `RuntimeError: Wrong type of spell!` and a blank spell name. The ability appears in the list but clicking it does nothing. Upstream bug.
+
+**Root cause:** In `Spellbook.GetUsableMemorizedSpells`, when `GetSpelldataIndex` returns -1 (spell not found in spellinfo — can happen if the SPL file lacks extended headers, or spellinfo was cleared/regenerated between list build and click), the code logs an error but still adds the spell with a corrupted index: `-1 + 4000 = 3999`. `SpellPressed` decodes this as `Type = 3999//1000 = 3` (wrong!) and `Spell = 3999%1000 = 999` (wrong!). `SpellCast(pc, 3, 999)` can't find any spell → empty spelldata → "Wrong type of spell!".
+
+**Fix (`upstream-gemrb/gemrb/GUIScripts/Spellbook.py`):** Add `continue` after the existing -1 error log so spells with invalid indices are excluded from the list instead of being added with corrupted encoding. Also added debug logging in `FloatMenuWindow.py` to capture SpellIndex values for future diagnosis.
+
+## 44. Fix level-up window not usable on gamepad
+
+**Problem:** Level-up window opens but D-pad can't navigate to Accept or thief skill +/- buttons. No `Window.Focus()` called before `ShowModal()`.
+
+**Fix (`custom_scripts/pst/GUIREC.py`):** Add `Button.MakeDefault()` on Accept button (A button triggers it) and `Window.Focus()` before `ShowModal()` (D-pad navigation works).
 
 ## 43. Fix float menu group/action buttons doing nothing
 

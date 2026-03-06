@@ -437,8 +437,10 @@ def UpdateFloatMenuSpell (pc, i):
 
 		spell = GemRB.GetSpell (SpellResRef)
 		Button.SetTooltip (spell['SpellName'])
+		sidx = spell_list[i + float_menu_index]['SpellIndex']
+		GemRB.Log (LOG_MESSAGE, "FloatMenu", "Spell slot " + str(i) + ": " + SpellResRef + " SpellIndex=" + str(sidx))
 		Button.OnPress (lambda: CloseOnPress (ActionsWindow.SpellPressed))
-		Button.SetVarAssoc ("Spell", spell_list[i + float_menu_index]['SpellIndex'])
+		Button.SetVarAssoc ("Spell", sidx)
 		Button.SetState (IE_GUI_BUTTON_ENABLED)
 	elif i < 3 and GemRB.GetPlayerStat (pc, IE_CLASS) == 9:
 		# handle thieving

@@ -929,6 +929,7 @@ def OpenLevelUpWindow ():
 	Button = Window.GetControl (0)
 	Button.SetText (4192)
 	Button.OnPress (AcceptLevelUp)
+	Button.MakeDefault()
 
 	pc = GemRB.GameGetSelectedPCSingle ()
 
@@ -1205,6 +1206,7 @@ def OpenLevelUpWindow ():
 	Text = Window.GetControl (3)
 	Text.SetText (overview)
 
+	Window.Focus()
 	Window.ShowModal (MODAL_SHADOW_GRAY)
 
 def GetNewTNOSaves (pc, Class, SavThrows, NextLevel):
