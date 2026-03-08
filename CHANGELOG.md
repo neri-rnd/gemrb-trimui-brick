@@ -14,6 +14,14 @@ Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Con
 
 ---
 
+## 52. Block cutscene portrait selection + deploy script fix
+
+**Fix (`patches/CORE_fixes.patch`):** Added `Window::HitTest` guard — windows with `IgnoreEvents` no longer receive events via child controls during cutscene/dialogue (`InCutSceneMode`). Prevents D-pad portrait selection during Dead Nations cutscene stealing viewport focus. Root cause: `Window::HitTest` bypassed `IgnoreEvents` by checking child controls directly; portrait buttons inside PortraitWin (which has `IgnoreEvents`) still passed HitTest.
+
+**Fix (`custom_scripts/pst/MessageWindow.py`):** Added `HIDE_CUT` aliases (indices 1-3) to ActionsWindow, OptionsWindow, PortraitWin for visual hiding during cutscenes. Guarded `OnDialogWindowClose` and `UpdateControlStatus` elif branch with `GS_HIDEGUI` check to prevent `MWindow.Close()` callback from undoing HIDE_CUT visibility.
+
+**Fix (`deploy.sh`):** Added automatic sync of all `custom_scripts/pst/*.py` to device `games/pst/override/`. Previously only `fonts.2da` was pushed to override.
+
 ## 51. Sync to upstream e1ae06041d — drop 6 absorbed patches
 
 **Upstream sync (`build.sh`, `patches/`):** Updated base from `3a52c5fd48` to `e1ae06041d` (March 8 2026). Upstream absorbed 6 of our patches: `pyobject_leak_fixes` (PyObject ref leaks in GUIScript.cpp), `freeitem_leak_fixes` (missing FreeItem calls), `audit2_fixes` (ChunkActor null deref + SetPLT key leak), `audit3_fixes` (GetContainerItem dict leak), `spellindex_fix` (corrupted SpellIndex crash), `guireccommon_fix` (PaperDoll clowncol.2da crash). Also includes upstream fixes: projectile cone/wall targeting, day/night music transitions, PST armor spell fragility mechanic, FloatMenuWindow group actions. Patches reduced from 13 → 7.

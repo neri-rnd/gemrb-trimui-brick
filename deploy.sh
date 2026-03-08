@@ -64,6 +64,11 @@ adb push "$SCRIPT_DIR/device/fonts/Literata.ttf" "$DEVICE_DIR/fonts/Literata.ttf
 adb shell "mkdir -p $DEVICE_DIR/games/pst/override"
 adb push "$SCRIPT_DIR/device/games/pst/override/fonts.2da" "$DEVICE_DIR/games/pst/override/fonts.2da"
 
+echo ">>> Syncing custom Python scripts..."
+for pyf in "$SCRIPT_DIR/custom_scripts/pst/"*.py; do
+    adb push "$pyf" "$DEVICE_DIR/games/pst/override/$(basename "$pyf")"
+done
+
 echo ">>> Patching gemrb.ini (ButtonFont = NORMAL)..."
 adb push "$SCRIPT_DIR/device/engine/unhardcoded/pst/gemrb.ini" "$DEVICE_DIR/engine/unhardcoded/pst/gemrb.ini"
 

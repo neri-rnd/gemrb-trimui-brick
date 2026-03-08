@@ -38,6 +38,8 @@ MWindow = 0
 
 def OnDialogWindowClose():
 	"""OnClose callback: restore UI bars whenever MWindow closes (Esc, button, etc)."""
+	if GemRB.GetGUIFlags() & GS_HIDEGUI:
+		return  # cutscene active — HIDE_CUT handles visibility
 	for i in range(3):
 		v = GemRB.GetView("NOT_DLG", i)
 		if v:
@@ -48,11 +50,13 @@ def OnLoad():
 
 	ActionsWindow = GemRB.LoadWindow(0, GUICommon.GetWindowPack(), WINDOW_BOTTOM|WINDOW_LEFT)
 	ActionsWindow.AddAlias("ACTWIN")
+	ActionsWindow.AddAlias("HIDE_CUT", 1)
 	ActionsWindow.AddAlias("NOT_DLG", 0)
 	ActionsWindow.SetFlags(WF_BORDERLESS|IE_GUI_VIEW_IGNORE_EVENTS, OP_OR)
 
 	OptionsWindow = GemRB.LoadWindow(2, GUICommon.GetWindowPack(), WINDOW_BOTTOM|WINDOW_RIGHT)
 	OptionsWindow.AddAlias("OPTWIN")
+	OptionsWindow.AddAlias("HIDE_CUT", 2)
 	OptionsWindow.AddAlias("NOT_DLG", 1)
 	OptionsWindow.SetFlags(WF_BORDERLESS|IE_GUI_VIEW_IGNORE_EVENTS, OP_OR)
 
@@ -64,6 +68,7 @@ def OnLoad():
 	MWindow.OnClose(OnDialogWindowClose)
 
 	PortraitWin = PortraitWindow.OpenPortraitWindow (WINDOW_BOTTOM|WINDOW_HCENTER)
+	PortraitWin.AddAlias("HIDE_CUT", 3)
 	PortraitWin.AddAlias("NOT_DLG", 2)
 	PortraitWin.SetFlags(WF_BORDERLESS|IE_GUI_VIEW_IGNORE_EVENTS, OP_OR)
 
@@ -226,11 +231,11 @@ def UpdateControlStatus ():
 
 		UpdateFooterArrow()
 	elif MWindow:
-		# Restore NOT_DLG windows
-		for i in range(3):
-			v = GemRB.GetView("NOT_DLG", i)
-			if v:
-				v.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_NAND)
-
-		MWindow.SetFlags(IE_GUI_VIEW_IGNORE_EVENTS, OP_OR)
-		MWindow.Close()
+		# Restore NOT_DLG windows (but not during cutscenes — HIDE_CUT hides them)
+		if not (GemRB.GetGUIFlags() & GS_HIDEGUI):
+			for i in range(3):
+				v = GemRB.GetView("NOT_DLG", i)
+				if v:
+					v.SetFlags(IE_GUI_VIEW_INVISIBLE, OP_NAND)
+			MWindow.SetFlags(IE_GUI_VIEW_IGNORE_EVENTS, OP_OR)
+			MWindow.Close()
