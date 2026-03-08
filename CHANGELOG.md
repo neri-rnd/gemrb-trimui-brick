@@ -14,6 +14,21 @@ Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Con
 
 ---
 
+## 54. Fix duplicate named actors in cutscenes (e.g. Hargrimm in Dead Nations)
+
+**Fix (`patches/CORE_fixes.patch`):** Added script-name dedup in `CreateCreatureCore` (`GSUtils.cpp`). When a cutscene script calls `CreateCreature` and the new actor has a non-empty script name matching an existing actor on the map, the old actor is destroyed (`DestroySelf`) before the new one is added. Guarded by `InCutSceneMode()` so normal gameplay spawns are unaffected.
+
+Root cause: In AR1500 (Dead Nations), IniSpawn places Hargrimm on area entry (persisted across saves). Later, cutscene script `1500cs14.BCS` calls `CreateCreature("Hargri", [2500,800])` to spawn Hargrimm at a walk-in position. Without dedup, both actors coexist — `Map::GetActor("Hargrim")` returns the first, so the cutscene controls only the IniSpawn one while the CreateCreature one stands idle (or vice versa). The fix is generalized: any cutscene `CreateCreature` of a named actor that already exists will replace the old one.
+
+## 53. Fix actors invisible during cutscenes (fog of war bypass)
+
+**Fix (`patches/CORE_fixes.patch`):** Bypass fog of war checks during cutscenes in `Map::DrawMap`. Three changes to `Map.cpp`:
+1. Actor rendering (line 1301-1303): bypass `IsExplored`/`IsVisible` when `InCutSceneMode(false)` — actors at unexplored locations are now drawn during cutscenes
+2. Area animations (line 1074): initialize visibility to true during cutscenes — background animations at cutscene locations are shown
+3. Fog overlay (line 1409-1410): pass nullptr for explored/visible bitmaps during cutscenes — suppresses the dark fog overlay that would cover actors even if they passed visibility checks
+
+Root cause: `Map::DrawMap` requires `IsExplored(actor->Pos)` AND `IsVisible(actor->Pos)` before drawing actors. During cutscenes (e.g., Dead Nations Hargrimm/Soego), the camera moves to areas no party member has explored. Only actors with `IE_EXPLORE` (party members) contribute to `VisibleBitmap` via `UpdateFog`. NPCs at the cutscene location fail both checks. `DrawOverheadText` has no fog check (explaining why Soego's text was visible but sprite wasn't). Uses `InCutSceneMode(false)` (cutscene flag only, not dialogue) — consistent with existing `UpdateFog` cutscene guard at Map.cpp:3592.
+
 ## 52. Block cutscene portrait selection + deploy script fix
 
 **Fix (`patches/CORE_fixes.patch`):** Added `Window::HitTest` guard — windows with `IgnoreEvents` no longer receive events via child controls during cutscene/dialogue (`InCutSceneMode`). Prevents D-pad portrait selection during Dead Nations cutscene stealing viewport focus. Root cause: `Window::HitTest` bypassed `IgnoreEvents` by checking child controls directly; portrait buttons inside PortraitWin (which has `IgnoreEvents`) still passed HitTest.

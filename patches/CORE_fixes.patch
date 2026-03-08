@@ -5,7 +5,7 @@ index 400c41c..ad74b21 100644
 @@ -24,6 +24,7 @@
  #include "Interface.h"
  #include "WindowManager.h"
-
+ 
 +#include "GUI/GameControl.h"
  #include "GUI/GUIScriptInterface.h"
  #include "Logging/Logging.h"
@@ -35,7 +35,7 @@ index 400c41c..ad74b21 100644
  			}
 @@ -695,6 +703,9 @@ bool Window::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
  	}
-
+ 
  	if (key.keycode == GEM_ESCAPE && mod == 0) {
 +		if (core->InCutSceneMode()) {
 +			return true; // block Esc during dialogue and cutscene
@@ -50,7 +50,7 @@ index 8a46583..6172cd4 100644
 @@ -464,6 +464,10 @@ void GameControl::WillDraw(const Region& /*drawFrame*/, const Region& /*clip*/)
  	const Map* area = CurrentArea();
  	if (!area) return;
-
+ 
 +	// skip interactive highlighting while events are suppressed (cutscene/dialogue)
 +	// mirrors the IgnoreEvents check in OnGlobalMouseMove
 +	if (Flags() & IgnoreEvents) return;
@@ -80,6 +80,70 @@ index 8a46583..6172cd4 100644
  	if (Mod & GEM_MOD_CTRL) {
  		Point p = ConvertPointFromScreen(me.Pos());
  		DebugPaint(p + viewport.origin, me.button == GEM_MB_MENU);
+diff --git a/gemrb/core/Map.cpp b/gemrb/core/Map.cpp
+index 027f430..patched 100644
+--- a/gemrb/core/Map.cpp
++++ b/gemrb/core/Map.cpp
+@@ -1071,7 +1071,8 @@ AreaAnimation* Map::GetNextAreaAnimation(aniIterator& iter, ieDword gametime) co
+ 		// the animations can be big, so to avoid sudden appearances, check drawing region vertices
+ 		// for biggest ones also check midpoints, since exploration happens with circles, so e.g. a horizontal
+ 		// approach would show the midpoint a few tiles before any vertex
+-		bool visible = false;
++		// During cutscenes, always show area animations (fog is suppressed)
++		bool visible = core->InCutSceneMode(false);
+ 		Region bbox = a.DrawingRegion();
+ 		std::vector<Point> verts { bbox.origin, bbox.Maximum(), Point(bbox.x + bbox.w, bbox.y), Point(bbox.x, bbox.y + bbox.h) };
+ 		if (bbox.w > 150 || bbox.h > 150) {
+@@ -1298,9 +1299,11 @@ void Map::DrawMap(const Region& viewport, uint32_t dFlags)
+ 				bool visible;
+ 				visible = false;
+ 				// always update the animations even if we arent visible
+-				if (actor->UpdateDrawingState() && IsExplored(actor->Pos)) {
++				if (actor->UpdateDrawingState() && (IsExplored(actor->Pos) || core->InCutSceneMode(false))) {
+ 					// apparently birds and the dead are always visible?
+-					visible = IsVisible(actor->Pos) || actor->Modified[IE_DONOTJUMP] & DNJ_BIRD || actor->GetInternalFlag() & IF_REALLYDIED;
++					// During cutscenes, bypass fog — camera may be at unexplored locations
++					visible = IsVisible(actor->Pos) || core->InCutSceneMode(false)
++						|| actor->Modified[IE_DONOTJUMP] & DNJ_BIRD || actor->GetInternalFlag() & IF_REALLYDIED;
+ 					if (visible) {
+ 						BlitFlags flags = SetDrawingStencilForScriptable(actor, viewport);
+ 						if (game->TimeStoppedFor(actor)) {
+@@ -1406,8 +1409,10 @@ void Map::DrawMap(const Region& viewport, uint32_t dFlags)
+ 		DrawDebugOverlay(viewport, dFlags);
+ 	}
+ 
+-	const Bitmap* exploredBits = (dFlags & DEBUG_SHOW_FOG_UNEXPLORED) ? nullptr : &ExploredBitmap;
+-	const Bitmap* visibleBits = (dFlags & DEBUG_SHOW_FOG_INVISIBLE) ? nullptr : &VisibleBitmap;
++	// Suppress fog overlay during cutscenes — actors/animations are shown regardless of exploration
++	bool cutsceneFog = core->InCutSceneMode(false);
++	const Bitmap* exploredBits = (cutsceneFog || (dFlags & DEBUG_SHOW_FOG_UNEXPLORED)) ? nullptr : &ExploredBitmap;
++	const Bitmap* visibleBits = (cutsceneFog || (dFlags & DEBUG_SHOW_FOG_INVISIBLE)) ? nullptr : &VisibleBitmap;
+ 
+ 	FogMapData mapData {
+ 		exploredBits,
+diff --git a/gemrb/core/GameScript/GSUtils.cpp b/gemrb/core/GameScript/GSUtils.cpp
+index e5005fb..patched 100644
+--- a/gemrb/core/GameScript/GSUtils.cpp
++++ b/gemrb/core/GameScript/GSUtils.cpp
+@@ -923,6 +923,18 @@ void CreateCreatureCore(Scriptable* Sender, Action* parameters, int flags)
+ 	}
+ 
+ 	Map* map = Sender->GetCurrentArea();
++
++	// During cutscenes, remove any pre-existing actor with the same script
++	// name before adding the new one. Prevents duplicates when a cutscene
++	// CreateCreature overlaps an IniSpawn-persisted actor (e.g. AR1500
++	// Hargrimm: IniSpawn places one from a previous visit, cutscene creates
++	// another at its walk-in position — resulting in a static duplicate).
++	const ieVariable& newName = ab->GetScriptName();
++	if (core->InCutSceneMode() && newName[0]) {
++		Actor* existing = map->GetActor(newName, 0);
++		if (existing) existing->DestroySelf();
++	}
++
+ 	map->AddActor(ab, true);
+ 	ab->SetPosition(pnt, flags & CC_CHECK_IMPASSABLE);
+ 	ab->SetOrientation(ClampToOrientation(parameters->int0Parameter), false);
 diff --git a/gemrb/core/Inventory.cpp b/gemrb/core/Inventory.cpp
 index 5d6b61d..beecf5b 100644
 --- a/gemrb/core/Inventory.cpp
