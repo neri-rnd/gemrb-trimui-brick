@@ -97,6 +97,9 @@ def OnLoad():
 	MessageTA.AddAlias("MsgSys", 0)
 	MessageTA.SetFrame({'x': TA_MARGIN, 'y': TA_MARGIN, 'w': 640 - TA_MARGIN * 2, 'h': TA_H})
 
+	# 24px Literata for dialogue text (default FONTDLG is 14px for menus)
+	MessageTA.SetFont("DIALOGFNT")
+
 	# Text margins — uniform padding inside text area
 	MessageTA.SetMargins(16, 16, 16, 4)
 

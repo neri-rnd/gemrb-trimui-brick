@@ -2,15 +2,16 @@
 set -e
 
 # =============================================================================
-# GemRB Master (3a52c5fd48) Build — TrimUI Brick / MuOS
+# GemRB Master (e1ae06041d) Build — TrimUI Brick / MuOS
 #
-# Builds upstream master (3a52c5fd48) with 7 compatibility patches:
+# Builds upstream master (e1ae06041d) with 7 compatibility patches:
 #   - CORE_fixes: OnMouseDrag crash fix, Esc-in-dialog block, weapon anim on equip/remove
 #   - GLES2_fixes: hardcode OPENGLES2_FOUND for Docker build
 #   - GLES2_shader_fix: GLES2 attribute bindings, projection matrix, vertex shader
 #   - dialogue_customization: SetMargins Python binding, name format, compact options
 #   - video_fix: RGB555 format fallthrough + source pitch fix for GLES2 video
 #   - dialogue_footer: TextArea scroll info API for "more below" arrow indicator
+#   - colormod_fix: Fix GlobalColorMod.locked never reset (spell tint persists forever)
 #
 # USE_SDL_CONTROLLER_API is OFF — TrimUI Brick has no analog sticks,
 # so we use gptokeyb for D-pad mouse control and button remapping.
@@ -20,13 +21,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATCH_DIR="$SCRIPT_DIR/patches"
 WORK_DIR="$SCRIPT_DIR/.build"
 UPSTREAM_REPO="${UPSTREAM_GEMRB:-$SCRIPT_DIR/upstream-gemrb}"
-GEMRB_COMMIT="3a52c5fd48e902313fc028bea139fb3e68837aef"
+GEMRB_COMMIT="e1ae06041d574f1a6e83d06990467849a7f6a7d0"
 
 echo "=== GemRB Master ($GEMRB_COMMIT) Builder ==="
 echo ""
 
 # Verify patches exist
-for patch in CORE_fixes.patch GLES2_fixes.diff GLES2_shader_fix.patch dialogue_customization.patch video_fix.patch dialogue_footer.patch guireccommon_fix.patch; do
+for patch in CORE_fixes.patch GLES2_fixes.diff GLES2_shader_fix.patch dialogue_customization.patch video_fix.patch dialogue_footer.patch colormod_fix.patch; do
     if [ ! -f "$PATCH_DIR/$patch" ]; then
         echo "ERROR: Missing patch: $PATCH_DIR/$patch"
         exit 1
@@ -76,9 +77,9 @@ echo ">>> Applying dialogue_footer (TextArea scroll info for footer arrow)..."
 git apply "$PATCH_DIR/dialogue_footer.patch"
 echo "    Applied dialogue_footer.patch"
 
-echo ">>> Applying guireccommon_fix (lazy PaperDoll import — fixes PST stats panel)..."
-git apply "$PATCH_DIR/guireccommon_fix.patch"
-echo "    Applied guireccommon_fix.patch"
+echo ">>> Applying colormod_fix (GlobalColorMod.locked reset — fixes persistent spell tint)..."
+git apply "$PATCH_DIR/colormod_fix.patch"
+echo "    Applied colormod_fix.patch"
 
 cd "$SCRIPT_DIR"
 

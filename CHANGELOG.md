@@ -4,15 +4,19 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 
 ---
 
-# Phase 3: GemRB Master (0783b3e) + gptokeyb (current)
+# Phase 3: GemRB Master (e1ae06041d) + gptokeyb (current)
 
-Synced to upstream master (commit 0783b3e, March 2 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, and more). Patches and Python overrides simplified accordingly.
+Synced to upstream master (commit e1ae06041d, March 8 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, PyObject ref leaks, FreeItem leaks, SpellIndex crash, PaperDoll clowncol.2da crash, FloatMenuWindow group actions, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
-Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, pyobject_leak_fixes, freeitem_leak_fixes, audit2_fixes, audit3_fixes, colormod_fix, spellindex_fix, guireccommon_fix)
+Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, colormod_fix)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
 
 ---
+
+## 51. Sync to upstream e1ae06041d — drop 6 absorbed patches
+
+**Upstream sync (`build.sh`, `patches/`):** Updated base from `3a52c5fd48` to `e1ae06041d` (March 8 2026). Upstream absorbed 6 of our patches: `pyobject_leak_fixes` (PyObject ref leaks in GUIScript.cpp), `freeitem_leak_fixes` (missing FreeItem calls), `audit2_fixes` (ChunkActor null deref + SetPLT key leak), `audit3_fixes` (GetContainerItem dict leak), `spellindex_fix` (corrupted SpellIndex crash), `guireccommon_fix` (PaperDoll clowncol.2da crash). Also includes upstream fixes: projectile cone/wall targeting, day/night music transitions, PST armor spell fragility mechanic, FloatMenuWindow group actions. Patches reduced from 13 → 7.
 
 ## 50. Records stats panel 14px font
 

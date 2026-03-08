@@ -1,7 +1,7 @@
 2DA V1.0
 FONTDLG
     RESREF      FONT_NAME   PX_SIZE     STYLE   BACKGRND  FLAGS
-0   FONTDLG     Literata    24          0       1         0
+0   FONTDLG     Literata    14          0       1         0
 1   TRMTFONT    TRMTFONT    14          0       1         0
 2   EXOFONT     EXOFONT     14          0       1         0
 3   POSTANT     POSTANT     14          0       1         0
@@ -11,3 +11,4 @@ FONTDLG
 7   SYSFONT     SYSFONT     14          0       1         0
 8   NORMAL      FONTDLG     14          0       1         0
 9   MEDIUMDLG   Literata    14          0       1         0
+10  DIALOGFNT   Literata    24          0       1         0

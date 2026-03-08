@@ -142,6 +142,7 @@ def OpenQuestsWindow ():
 	List.OnSelect (OnJournalQuestSelect)
 
 	QuestDesc = QuestsWindow.GetControl (3)
+	QuestDesc.SetFont("DIALOGFNT")
 
 	EvaluateAllQuests ()
 	PopulateQuestsList ()
@@ -272,6 +273,7 @@ def OpenBeastsWindow ():
 	BeastImage.SetFlags (IE_GUI_BUTTON_PICTURE | IE_GUI_BUTTON_NO_IMAGE, OP_SET)
 
 	BeastDesc = BeastsWindow.GetControl (2)
+	BeastDesc.SetFont("DIALOGFNT")
 
 	EvaluateAllBeasts ()
 	PopulateBeastsList ()
@@ -350,6 +352,7 @@ def OpenLogWindow ():
 
 	# text area
 	Text = LogWindow.GetControl (2)
+	Text.SetFont("DIALOGFNT")
 
 	# limit the log to the last entries (original did something similar)
 	js = GemRB.GetJournalSize (0)

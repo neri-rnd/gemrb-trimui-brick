@@ -118,10 +118,6 @@ def InitRecordsWindow (Window):
 	Button.OnMouseEnter (OnRecordsHelpHitPoints)
 	Button.OnMouseLeave (OnRecordsButtonLeave)
 
-	# TrimUI Brick: stats overview textarea — use 14px Literata (MEDIUMDLG)
-	Text = Window.GetControl (0)
-	Text.SetFont("MEDIUMDLG")
-
 	return
 
 
@@ -912,22 +908,6 @@ def OpenLevelUpWindow ():
 	global LevelDiff, Level, Classes, NumClasses, NewCharacteristicPts
 
 	LevelUpWindow = Window = GemRB.LoadWindow (4, "GUIREC") # since we get called from NewLife
-
-	# TrimUI Brick: CHU labels were designed for 14px BAM but FONTDLG is now
-	# 20px Literata TTF. Override all to MEDIUMDLG (14px Literata), keep yellow.
-	for _lid in (0x0, 0x1,                                  # name, class
-	             0x4, 0x5, 0x6,                              # thief header, points left, points value
-	             0x7, 0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe,    # skill names + values
-	             0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21,  # saves header + labels + values
-	             0x22, 0x23, 0x24, 0x25, 0x26, 0x27):        # AC, HP labels + values
-		_lbl = Window.GetControl(0x10000000 + _lid)
-		if _lbl:
-			_lbl.SetFont("MEDIUMDLG")
-
-	# Overview text area — also 14px, keep original yellow color
-	_overview_ta = Window.GetControl(3)
-	if _overview_ta:
-		_overview_ta.SetFont("MEDIUMDLG")
 
 	# Accept
 	Button = Window.GetControl (0)
