@@ -20,9 +20,9 @@ Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Con
 
 Root cause: Color opcodes (8/9/0x33/0x34) return `FX_APPLIED` for all timing modes. For timing=1 (instant permanent, from timing=4→1 engine transformation), the handler runs every frame forever, continuously re-applying the tint even after the spell's stat effects expire. IESDP research confirmed no PST spells use timing=1 for color opcodes directly — these arise from the engine's delay-permanent transformation. Loading saves with previously-stuck tints also auto-clears if stat effects are gone.
 
-## 54. Fix duplicate named actors in cutscenes (e.g. Hargrimm in Dead Nations)
+## 54. Revert CreateCreature dedup — was deleting Hargrimm permanently
 
-**Fix (`patches/CORE_fixes.patch`):** Added script-name dedup in `CreateCreatureCore` (`GSUtils.cpp`). When a cutscene script calls `CreateCreature` and the new actor has a non-empty script name matching an existing actor on the map, the old actor is destroyed (`DestroySelf`) before the new one is added. Guarded by `InCutSceneMode()` so normal gameplay spawns are unaffected.
+**Reverted (`patches/CORE_fixes.patch`):** Removed the cutscene `CreateCreatureCore` dedup added in commit 820f4e7. The dedup called `DestroySelf()` on the IniSpawn Hargrimm when the cutscene created a temporary duplicate. After the cutscene, the script also removed/relocated its own temporary Hargrimm — leaving no Hargrimm on the map at all. The original game relies on the duplicate acting as a backup: `ActionOverride("Hargrim", ...)` targets the first match (IniSpawn), so when the script cleans up the active one, the CreateCreature duplicate survives. Cosmetic duplicate during cutscene is acceptable vs. losing a quest NPC permanently.
 
 Root cause: In AR1500 (Dead Nations), IniSpawn places Hargrimm on area entry (persisted across saves). Later, cutscene script `1500cs14.BCS` calls `CreateCreature("Hargri", [2500,800])` to spawn Hargrimm at a walk-in position. Without dedup, both actors coexist — `Map::GetActor("Hargrim")` returns the first, so the cutscene controls only the IniSpawn one while the CreateCreature one stands idle (or vice versa). The fix is generalized: any cutscene `CreateCreature` of a named actor that already exists will replace the old one.
 

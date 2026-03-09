@@ -1,5 +1,42 @@
+diff --git a/gemrb/core/GUI/GameControl.cpp b/gemrb/core/GUI/GameControl.cpp
+index 8a46583..6172cd4 100644
+--- a/gemrb/core/GUI/GameControl.cpp
++++ b/gemrb/core/GUI/GameControl.cpp
+@@ -464,6 +464,10 @@ void GameControl::WillDraw(const Region& /*drawFrame*/, const Region& /*clip*/)
+ 	const Map* area = CurrentArea();
+ 	if (!area) return;
+ 
++	// skip interactive highlighting while events are suppressed (cutscene/dialogue)
++	// mirrors the IgnoreEvents check in OnGlobalMouseMove
++	if (Flags() & IgnoreEvents) return;
++
+ 	int flags = GA_NO_DEAD | GA_NO_UNSCHEDULED | GA_SELECT | GA_NO_ENEMY | GA_NO_NEUTRAL;
+ 	auto ab = area->GetActorsInRect(SelectionRect(), flags);
+ 
+@@ -2150,6 +2154,10 @@ void GameControl::TryDefaultTalk() const
+ /** Mouse Button Down */
+ bool GameControl::OnMouseDown(const MouseEvent& me, unsigned short Mod)
+ {
++	if (core->InCutSceneMode()) {
++		return true; // block clicks during dialogue and cutscene
++	}
++
+ 	if (Mod & GEM_MOD_CTRL) { // debug paint mode
+ 		return true;
+ 	}
+@@ -2219,6 +2227,10 @@ bool GameControl::ShouldTriggerWorldMap(const Actor* pc) const
+ /** Mouse Button Up */
+ bool GameControl::OnMouseUp(const MouseEvent& me, unsigned short Mod)
+ {
++	if (core->InCutSceneMode()) {
++		return true; // block clicks during dialogue and cutscene
++	}
++
+ 	if (Mod & GEM_MOD_CTRL) {
+ 		Point p = ConvertPointFromScreen(me.Pos());
+ 		DebugPaint(p + viewport.origin, me.button == GEM_MB_MENU);
 diff --git a/gemrb/core/GUI/Window.cpp b/gemrb/core/GUI/Window.cpp
-index 400c41c..ad74b21 100644
+index 400c41c..92d9faf 100644
 --- a/gemrb/core/GUI/Window.cpp
 +++ b/gemrb/core/GUI/Window.cpp
 @@ -24,6 +24,7 @@
@@ -9,8 +46,8 @@ index 400c41c..ad74b21 100644
 +#include "GUI/GameControl.h"
  #include "GUI/GUIScriptInterface.h"
  #include "Logging/Logging.h"
-
-@@ -342,6 +343,11 @@ bool Window::HitTest(const Point& p) const
+ 
+@@ -343,6 +344,11 @@ bool Window::HitTest(const Point& p) const
  {
  	bool hit = View::HitTest(p);
  	if (hit == false) {
@@ -43,45 +80,23 @@ index 400c41c..ad74b21 100644
  		Close();
  		return true;
  	}
-diff --git a/gemrb/core/GUI/GameControl.cpp b/gemrb/core/GUI/GameControl.cpp
-index 8a46583..6172cd4 100644
---- a/gemrb/core/GUI/GameControl.cpp
-+++ b/gemrb/core/GUI/GameControl.cpp
-@@ -464,6 +464,10 @@ void GameControl::WillDraw(const Region& /*drawFrame*/, const Region& /*clip*/)
- 	const Map* area = CurrentArea();
- 	if (!area) return;
- 
-+	// skip interactive highlighting while events are suppressed (cutscene/dialogue)
-+	// mirrors the IgnoreEvents check in OnGlobalMouseMove
-+	if (Flags() & IgnoreEvents) return;
-+
- 	int flags = GA_NO_DEAD | GA_NO_UNSCHEDULED | GA_SELECT | GA_NO_ENEMY | GA_NO_NEUTRAL;
- 	auto ab = area->GetActorsInRect(SelectionRect(), flags);
-
-@@ -2150,6 +2154,10 @@ void GameControl::TryDefaultTalk() const
- /** Mouse Button Down */
- bool GameControl::OnMouseDown(const MouseEvent& me, unsigned short Mod)
- {
-+	if (core->InCutSceneMode()) {
-+		return true; // block clicks during dialogue and cutscene
-+	}
-+
- 	if (Mod & GEM_MOD_CTRL) { // debug paint mode
- 		return true;
- 	}
-@@ -2219,6 +2227,10 @@ bool GameControl::ShouldTriggerWorldMap(const Actor* pc) const
- /** Mouse Button Up */
- bool GameControl::OnMouseUp(const MouseEvent& me, unsigned short Mod)
- {
-+	if (core->InCutSceneMode()) {
-+		return true; // block clicks during dialogue and cutscene
-+	}
-+
- 	if (Mod & GEM_MOD_CTRL) {
- 		Point p = ConvertPointFromScreen(me.Pos());
- 		DebugPaint(p + viewport.origin, me.button == GEM_MB_MENU);
+diff --git a/gemrb/core/Inventory.cpp b/gemrb/core/Inventory.cpp
+index aabecb8..12ad57f 100644
+--- a/gemrb/core/Inventory.cpp
++++ b/gemrb/core/Inventory.cpp
+@@ -1009,6 +1009,10 @@ bool Inventory::EquipItem(ieDword slot)
+ 				slot = GetWeaponSlot(weaponslot);
+ 			}
+ 			if (ieWordSigned(equip) == Equipped && newHeader == EquippedHeader) {
++				// Item changed in same slot (e.g., weapon swap in inventory).
++				// Slot effects don't need reapplication, but animation must update.
++				CacheAllWeaponInfo();
++				UpdateWeaponAnimation();
+ 				gamedata->FreeItem(itm, item->ItemResRef, false);
+ 				return false;
+ 			}
 diff --git a/gemrb/core/Map.cpp b/gemrb/core/Map.cpp
-index 027f430..patched 100644
+index 027f430..f230a2f 100644
 --- a/gemrb/core/Map.cpp
 +++ b/gemrb/core/Map.cpp
 @@ -1071,7 +1071,8 @@ AreaAnimation* Map::GetNextAreaAnimation(aniIterator& iter, ieDword gametime) co
@@ -94,7 +109,7 @@ index 027f430..patched 100644
  		Region bbox = a.DrawingRegion();
  		std::vector<Point> verts { bbox.origin, bbox.Maximum(), Point(bbox.x + bbox.w, bbox.y), Point(bbox.x, bbox.y + bbox.h) };
  		if (bbox.w > 150 || bbox.h > 150) {
-@@ -1298,9 +1299,11 @@ void Map::DrawMap(const Region& viewport, uint32_t dFlags)
+@@ -1298,9 +1299,11 @@ void Map::DrawMap(const Region& viewport, FogRenderer& fogRenderer, uint32_t dFl
  				bool visible;
  				visible = false;
  				// always update the animations even if we arent visible
@@ -108,7 +123,7 @@ index 027f430..patched 100644
  					if (visible) {
  						BlitFlags flags = SetDrawingStencilForScriptable(actor, viewport);
  						if (game->TimeStoppedFor(actor)) {
-@@ -1406,8 +1409,10 @@ void Map::DrawMap(const Region& viewport, uint32_t dFlags)
+@@ -1406,8 +1409,10 @@ void Map::DrawMap(const Region& viewport, FogRenderer& fogRenderer, uint32_t dFl
  		DrawDebugOverlay(viewport, dFlags);
  	}
  
@@ -121,49 +136,11 @@ index 027f430..patched 100644
  
  	FogMapData mapData {
  		exploredBits,
-diff --git a/gemrb/core/GameScript/GSUtils.cpp b/gemrb/core/GameScript/GSUtils.cpp
-index e5005fb..patched 100644
---- a/gemrb/core/GameScript/GSUtils.cpp
-+++ b/gemrb/core/GameScript/GSUtils.cpp
-@@ -923,6 +923,18 @@ void CreateCreatureCore(Scriptable* Sender, Action* parameters, int flags)
- 	}
- 
- 	Map* map = Sender->GetCurrentArea();
-+
-+	// During cutscenes, remove any pre-existing actor with the same script
-+	// name before adding the new one. Prevents duplicates when a cutscene
-+	// CreateCreature overlaps an IniSpawn-persisted actor (e.g. AR1500
-+	// Hargrimm: IniSpawn places one from a previous visit, cutscene creates
-+	// another at its walk-in position — resulting in a static duplicate).
-+	const ieVariable& newName = ab->GetScriptName();
-+	if (core->InCutSceneMode() && newName[0]) {
-+		Actor* existing = map->GetActor(newName, 0);
-+		if (existing) existing->DestroySelf();
-+	}
-+
- 	map->AddActor(ab, true);
- 	ab->SetPosition(pnt, flags & CC_CHECK_IMPASSABLE);
- 	ab->SetOrientation(ClampToOrientation(parameters->int0Parameter), false);
-diff --git a/gemrb/core/Inventory.cpp b/gemrb/core/Inventory.cpp
-index 5d6b61d..beecf5b 100644
---- a/gemrb/core/Inventory.cpp
-+++ b/gemrb/core/Inventory.cpp
-@@ -1006,6 +1006,10 @@ bool Inventory::EquipItem(ieDword slot)
- 				slot = GetWeaponSlot(weaponslot);
- 			}
- 			if (ieWordSigned(equip) == Equipped && newHeader == EquippedHeader) {
-+				// Item changed in same slot (e.g., weapon swap in inventory).
-+				// Slot effects don't need reapplication, but animation must update.
-+				CacheAllWeaponInfo();
-+				UpdateWeaponAnimation();
- 				gamedata->FreeItem(itm, item->ItemResRef, false);
- 				return false;
- 			}
 diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
-index 8efbde7..f494569 100644
+index 9006193..f3ac078 100644
 --- a/gemrb/plugins/GUIScript/GUIScript.cpp
 +++ b/gemrb/plugins/GUIScript/GUIScript.cpp
-@@ -9356,6 +9356,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
+@@ -9369,6 +9369,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
  		}
  		si = TryToUnequip(actor, core->QuerySlot(Slot), Count);
  		actor->RefreshEffects();
