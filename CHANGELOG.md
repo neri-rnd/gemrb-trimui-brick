@@ -14,6 +14,12 @@ Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Con
 
 ---
 
+## 55. Fix persistent spell color tints (sibling-check colormod)
+
+**Fix (`patches/colormod_fix.patch`):** Permanent (timing=1) color effects now auto-clear when the spell's stat effects expire. Added `HasSiblingEffect` helper to `FXOpcodes.cpp` — checks if any other effect from the same source spell (`SourceRef`) remains in the actor's effect queue. If no siblings exist, the color handler returns `FX_NOT_APPLIED` to remove itself. Applied to all 6 color handlers: `fx_set_color_rgb`, `fx_set_color_rgb_global`, `fx_set_color_pulse_rgb`, `fx_set_color_pulse_rgb_global`, `fx_darken_rgb`, `fx_glow_rgb`. Also fixes `unsigned int` → `int` loop variable in `CharAnimations::CheckColorMod`.
+
+Root cause: Color opcodes (8/9/0x33/0x34) return `FX_APPLIED` for all timing modes. For timing=1 (instant permanent, from timing=4→1 engine transformation), the handler runs every frame forever, continuously re-applying the tint even after the spell's stat effects expire. IESDP research confirmed no PST spells use timing=1 for color opcodes directly — these arise from the engine's delay-permanent transformation. Loading saves with previously-stuck tints also auto-clears if stat effects are gone.
+
 ## 54. Fix duplicate named actors in cutscenes (e.g. Hargrimm in Dead Nations)
 
 **Fix (`patches/CORE_fixes.patch`):** Added script-name dedup in `CreateCreatureCore` (`GSUtils.cpp`). When a cutscene script calls `CreateCreature` and the new actor has a non-empty script name matching an existing actor on the map, the old actor is destroyed (`DestroySelf`) before the new one is added. Guarded by `InCutSceneMode()` so normal gameplay spawns are unaffected.

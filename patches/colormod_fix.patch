@@ -1,12 +1,124 @@
 diff --git a/gemrb/core/CharAnimations.cpp b/gemrb/core/CharAnimations.cpp
-index 0423a38..42867ef 100644
+index 0423a38..719e4b1 100644
 --- a/gemrb/core/CharAnimations.cpp
 +++ b/gemrb/core/CharAnimations.cpp
-@@ -490,6 +490,7 @@ void CharAnimations::SetColors(const ieDword* arg)
-
- void CharAnimations::CheckColorMod()
+@@ -498,7 +498,7 @@ void CharAnimations::CheckColorMod()
+ 		}
+ 	}
+ 
+-	for (unsigned int location = 0; location < PAL_MAX * 8; ++location) {
++	for (int location = 0; location < PAL_MAX * 8; ++location) {
+ 		if (!ColorMods[location].phase && ColorMods[location].type != RGBModifier::NONE) {
+ 			ColorMods[location].type = RGBModifier::NONE;
+ 			ColorMods[location].speed = 0;
+diff --git a/gemrb/plugins/FXOpcodes/FXOpcodes.cpp b/gemrb/plugins/FXOpcodes/FXOpcodes.cpp
+index 38f1bda..1e5c581 100644
+--- a/gemrb/plugins/FXOpcodes/FXOpcodes.cpp
++++ b/gemrb/plugins/FXOpcodes/FXOpcodes.cpp
+@@ -1355,43 +1355,72 @@ int fx_set_color_gradient(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+ 	return FX_APPLIED;
+ }
+ 
++// Check if the actor has any other effect from the same source spell.
++// Used to tie color effect lifetime to its sibling stat effects.
++static bool HasSiblingEffect(const Actor* target, const Effect* fx) {
++	if (fx->SourceRef.IsEmpty()) return false;
++	auto f = target->fxqueue.GetFirstEffect();
++	const Effect* eff;
++	while ((eff = target->fxqueue.GetNextEffect(f)) != nullptr) {
++		if (eff != fx && eff->SourceRef == fx->SourceRef) {
++			return true;
++		}
++	}
++	return false;
++}
++
+ // 08 Color:SetRGB
+ int fx_set_color_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
  {
-+	GlobalColorMod.locked = false;
- 	if (!GlobalColorMod.locked && GlobalColorMod.type != RGBModifier::NONE) {
- 		GlobalColorMod.type = RGBModifier::NONE;
- 		GlobalColorMod.speed = 0;
+ 	// print("fx_set_color_rgb(%2d): RGB: %x, Location: %d", fx->Opcode, fx->Parameter1, fx->Parameter2);
++	if (fx->TimingMode == FX_DURATION_INSTANT_PERMANENT) {
++		if (!HasSiblingEffect(target, fx)) {
++			return FX_NOT_APPLIED;
++		}
++	}
+ 	EffectQueue::HackColorEffects(target, fx);
+ 	ieDword location = fx->Parameter2 & 0xff;
+ 	target->SetColorMod(location, RGBModifier::ADD, -1, Color::FromBGRA(fx->Parameter1));
+-
+ 	return FX_APPLIED;
+ }
+ // 08 Color:SetRGBGlobal
+ int fx_set_color_rgb_global(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+ {
+ 	// print("fx_set_color_rgb_global(%2d): RGB: %x, Location: %d", fx->Opcode, fx->Parameter1, fx->Parameter2);
+-
++	if (fx->TimingMode == FX_DURATION_INSTANT_PERMANENT) {
++		if (!HasSiblingEffect(target, fx)) {
++			return FX_NOT_APPLIED;
++		}
++	}
+ 	target->SetColorMod(0xff, RGBModifier::ADD, -1, Color::FromBGRA(fx->Parameter1));
+-
+ 	return FX_APPLIED;
+ }
+ 
+ // 09 Color:PulseRGB
+ int fx_set_color_pulse_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+ {
++	if (fx->TimingMode == FX_DURATION_INSTANT_PERMANENT) {
++		if (!HasSiblingEffect(target, fx)) {
++			return FX_NOT_APPLIED;
++		}
++	}
+ 	EffectQueue::HackColorEffects(target, fx);
+ 	ieDword location = fx->Parameter2 & 0xff;
+ 	int speed = (fx->Parameter2 >> 16) & 0xFF;
+ 	target->SetColorMod(location, RGBModifier::ADD, speed, Color::FromBGRA(fx->Parameter1));
+-
+ 	return FX_APPLIED;
+ }
+ 
+ // 09 Color:PulseRGBGlobal (pst variant)
+ int fx_set_color_pulse_rgb_global(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+ {
++	if (fx->TimingMode == FX_DURATION_INSTANT_PERMANENT) {
++		if (!HasSiblingEffect(target, fx)) {
++			return FX_NOT_APPLIED;
++		}
++	}
+ 	int speed = (fx->Parameter2 >> 16) & 0xFF;
+ 	target->SetColorMod(0xff, RGBModifier::ADD, speed, Color::FromBGRA(fx->Parameter1));
+-
+ 	return FX_APPLIED;
+ }
+ 
+@@ -2552,6 +2581,11 @@ int fx_brief_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+ int fx_darken_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+ {
+ 	// print("fx_darken_rgb(%2d): RGB: %d, Location and speed: %d", fx->Opcode, fx->Parameter1, fx->Parameter2);
++	if (fx->TimingMode == FX_DURATION_INSTANT_PERMANENT) {
++		if (!HasSiblingEffect(target, fx)) {
++			return FX_NOT_APPLIED;
++		}
++	}
+ 	EffectQueue::HackColorEffects(target, fx);
+ 	ieDword location = fx->Parameter2 & 0xff;
+ 	target->SetColorMod(location, RGBModifier::TINT, -1, Color::FromBGRA(fx->Parameter1));
+@@ -2562,11 +2596,15 @@ int fx_darken_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+ int fx_glow_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+ {
+ 	// print("fx_glow_rgb(%2d): RGB: %d, Location and speed: %d", fx->Opcode, fx->Parameter1, fx->Parameter2);
++	if (fx->TimingMode == FX_DURATION_INSTANT_PERMANENT) {
++		if (!HasSiblingEffect(target, fx)) {
++			return FX_NOT_APPLIED;
++		}
++	}
+ 	EffectQueue::HackColorEffects(target, fx);
+ 	ieDword location = fx->Parameter2 & 0xff;
+ 	target->SetColorMod(location, RGBModifier::BRIGHTEN, -1,
+ 			    Color::FromBGRA(fx->Parameter1));
+-
+ 	return FX_APPLIED;
+ }
+ 
