@@ -49,7 +49,7 @@ echo ">>> Updating gemrb binary..."
 adb shell "cp $DEVICE_DIR/engine/gemrb $DEVICE_DIR/gemrb"
 
 echo ">>> Updating libgemrb_core.so..."
-adb shell "cp $DEVICE_DIR/engine/libgemrb_core.so $DEVICE_DIR/lib/libgemrb_core.so"
+adb shell "cp $DEVICE_DIR/engine/libgemrb_core.so $DEVICE_DIR/lib/libgemrb_core.so 2>/dev/null || cp \$(ls $DEVICE_DIR/engine/libgemrb_core.so.* 2>/dev/null | head -1) $DEVICE_DIR/lib/libgemrb_core.so"
 
 # --- Sync device configs ---
 
@@ -71,6 +71,10 @@ done
 
 echo ">>> Patching gemrb.ini (ButtonFont = NORMAL)..."
 adb push "$SCRIPT_DIR/device/engine/unhardcoded/pst/gemrb.ini" "$DEVICE_DIR/engine/unhardcoded/pst/gemrb.ini"
+
+echo ">>> Disabling GamepadSupport (gptokeyb handles D-pad as mouse)..."
+PST_CFG="$DEVICE_DIR/games/pst/GemRB.cfg"
+adb shell "grep -q '^GamepadSupport' $PST_CFG 2>/dev/null && sed -i 's/^GamepadSupport=.*/GamepadSupport=0/' $PST_CFG || echo 'GamepadSupport=0' >> $PST_CFG"
 
 # --- Done ---
 

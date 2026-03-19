@@ -1,5 +1,5 @@
 diff --git a/gemrb/plugins/SDLVideo/SDL20Video.h b/gemrb/plugins/SDLVideo/SDL20Video.h
-index 2741c57..04cf355 100644
+index b675d5b..559e450 100644
 --- a/gemrb/plugins/SDLVideo/SDL20Video.h
 +++ b/gemrb/plugins/SDLVideo/SDL20Video.h
 @@ -39,7 +39,12 @@ Uint32 SDLPixelFormatFromBufferFormat(Video::BufferFormat fmt, SDL_Renderer* ren

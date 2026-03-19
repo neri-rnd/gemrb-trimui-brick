@@ -4,15 +4,23 @@ All changes made to get GemRB (Planescape: Torment) running on the TrimUI Brick 
 
 ---
 
-# Phase 3: GemRB Master (e1ae06041d) + gptokeyb (current)
+# Phase 3: GemRB Master (da541e00d6) + gptokeyb (current)
 
-Synced to upstream master (commit e1ae06041d, March 8 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, PyObject ref leaks, FreeItem leaks, SpellIndex crash, PaperDoll clowncol.2da crash, FloatMenuWindow group actions, and more). Patches and Python overrides simplified accordingly.
+Synced to upstream master (commit da541e00d6, March 18 2026). Upstream absorbed many of our fixes (viewport centering, SetPlayerStat aarch64, PortraitWindow HP bars, FloatMenuWindow portrait cycling, Container flash fix, GUIOPT gamepad help text, PyObject ref leaks, FreeItem leaks, SpellIndex crash, PaperDoll clowncol.2da crash, FloatMenuWindow group actions, and more). Patches and Python overrides simplified accordingly.
 
 Build: `build.sh` → `engine.zip`
 Patches: `patches/` (CORE_fixes, GLES2_fixes, GLES2_shader_fix, dialogue_customization, video_fix, dialogue_footer, colormod_fix)
 Custom scripts: `custom_scripts/pst/` (MessageWindow.py, FloatMenuWindow.py, Container.py, GUIJRNL.py, GUIWORLD.py, GUISAVE.py, GUIREC.py)
 
 ---
+
+## 57. Fix GamepadSupport regression — disable SDL controller API
+
+**Fix (`deploy.sh`, `build.sh`):** Upstream commit `6ce6147475` deprecated the compile-time `USE_SDL_CONTROLLER_API` CMake flag (which our build set to OFF) and replaced it with a runtime `GamepadSupport` config setting defaulting to 1 (enabled). With GamepadSupport on, GemRB's built-in gamepad handler intercepted all controller input before gptokeyb: D-pad became keyboard scroll instead of mouse cursor, B mapped to right-click instead of Esc, Y mapped to inventory instead of right-click. Fix: deploy.sh now sets `GamepadSupport=0` in `games/pst/GemRB.cfg` (the config actually loaded via `-c` flag in the launch script). Removed defunct `USE_SDL_CONTROLLER_API=OFF` CMake flag from build.sh.
+
+## 56. Sync to upstream da541e00d6 — remove redundant Esc-key guard
+
+Synced to upstream commit da541e00d6 (31 new commits, March 18 2026). All 7 patches apply cleanly; 0 absorbed. Removed redundant Esc-key cutscene block from CORE_fixes.patch — upstream commit c05f114c86 (`SDLVideo::BlocksEvents`) now blocks ALL keys during cutscenes at the SDL level, making our Window.cpp guard triple-redundant (BlocksEvents + IgnoreEvents flag + our guard). Notable upstream additions: Hargrimm cutscene fix via `Map::GetActor` reverse iteration (43052627a3) + `GameScript::Face` cutscene hack (8d50aaccdc), PST fx_overlay timing fixes for strength/Power of One spells, GamepadSupport runtime config option, "Heal Party on Rest" default changed to 0.
 
 ## 55. Fix persistent spell color tints (sibling-check colormod)
 

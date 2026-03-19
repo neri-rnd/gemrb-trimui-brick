@@ -1,5 +1,5 @@
 diff --git a/cmake/modules/FindOpenGLES2.cmake b/cmake/modules/FindOpenGLES2.cmake
-index 4285a7d45b..e6d7b123f4 100644
+index 4285a7d..e6d7b12 100644
 --- a/cmake/modules/FindOpenGLES2.cmake
 +++ b/cmake/modules/FindOpenGLES2.cmake
 @@ -12,24 +12,27 @@ if(NOT HINT_GLES_LIBNAME)

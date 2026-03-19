@@ -12,10 +12,10 @@ index 0423a38..719e4b1 100644
  			ColorMods[location].type = RGBModifier::NONE;
  			ColorMods[location].speed = 0;
 diff --git a/gemrb/plugins/FXOpcodes/FXOpcodes.cpp b/gemrb/plugins/FXOpcodes/FXOpcodes.cpp
-index 38f1bda..1e5c581 100644
+index 9bd923a..dfa3ec4 100644
 --- a/gemrb/plugins/FXOpcodes/FXOpcodes.cpp
 +++ b/gemrb/plugins/FXOpcodes/FXOpcodes.cpp
-@@ -1355,43 +1355,72 @@ int fx_set_color_gradient(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+@@ -1354,43 +1354,72 @@ int fx_set_color_gradient(Scriptable* /*Owner*/, Actor* target, Effect* fx)
  	return FX_APPLIED;
  }
  
@@ -93,7 +93,7 @@ index 38f1bda..1e5c581 100644
  	return FX_APPLIED;
  }
  
-@@ -2552,6 +2581,11 @@ int fx_brief_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+@@ -2551,6 +2580,11 @@ int fx_brief_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
  int fx_darken_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
  {
  	// print("fx_darken_rgb(%2d): RGB: %d, Location and speed: %d", fx->Opcode, fx->Parameter1, fx->Parameter2);
@@ -105,7 +105,7 @@ index 38f1bda..1e5c581 100644
  	EffectQueue::HackColorEffects(target, fx);
  	ieDword location = fx->Parameter2 & 0xff;
  	target->SetColorMod(location, RGBModifier::TINT, -1, Color::FromBGRA(fx->Parameter1));
-@@ -2562,11 +2596,15 @@ int fx_darken_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
+@@ -2561,11 +2595,15 @@ int fx_darken_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
  int fx_glow_rgb(Scriptable* /*Owner*/, Actor* target, Effect* fx)
  {
  	// print("fx_glow_rgb(%2d): RGB: %d, Location and speed: %d", fx->Opcode, fx->Parameter1, fx->Parameter2);

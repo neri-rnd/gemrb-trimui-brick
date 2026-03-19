@@ -160,10 +160,10 @@ index ca7d426..6ec3dd5 100644
  	void MarkDialogStart();
  	void ClearDialogStart() { dialogScrollTarget = -1; }
 diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
-index 8efbde7..d69be95 100644
+index d4c31c7..1a6b07f 100644
 --- a/gemrb/plugins/GUIScript/GUIScript.cpp
 +++ b/gemrb/plugins/GUIScript/GUIScript.cpp
-@@ -4734,6 +4734,56 @@ static PyObject* GemRB_TextArea_SetOptions(PyObject* self, PyObject* args)
+@@ -4736,6 +4736,56 @@ static PyObject* GemRB_TextArea_SetOptions(PyObject* self, PyObject* args)
  	Py_RETURN_NONE;
  }
  
@@ -220,7 +220,7 @@ index 8efbde7..d69be95 100644
  PyDoc_STRVAR(GemRB_GetPartySize__doc,
  	     "===== GetPartySize =====\n\
  \n\
-@@ -13016,6 +13066,8 @@ static PyMethodDef GemRBInternalMethods[] = {
+@@ -13046,6 +13096,8 @@ static PyMethodDef GemRBInternalMethods[] = {
  	METHOD(TextArea_Append, METH_VARARGS),
  	METHOD(TextArea_ListResources, METH_VARARGS),
  	METHOD(TextArea_SetChapterText, METH_VARARGS),

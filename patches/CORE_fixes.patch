@@ -36,7 +36,7 @@ index 8a46583..6172cd4 100644
  		Point p = ConvertPointFromScreen(me.Pos());
  		DebugPaint(p + viewport.origin, me.button == GEM_MB_MENU);
 diff --git a/gemrb/core/GUI/Window.cpp b/gemrb/core/GUI/Window.cpp
-index 400c41c..92d9faf 100644
+index 51f2c49..047a0f0 100644
 --- a/gemrb/core/GUI/Window.cpp
 +++ b/gemrb/core/GUI/Window.cpp
 @@ -24,6 +24,7 @@
@@ -70,16 +70,6 @@ index 400c41c..92d9faf 100644
  			} else {
  				DispatchMouseMotion(target, event.mouse);
  			}
-@@ -695,6 +703,9 @@ bool Window::OnKeyPress(const KeyboardEvent& key, unsigned short mod)
- 	}
- 
- 	if (key.keycode == GEM_ESCAPE && mod == 0) {
-+		if (core->InCutSceneMode()) {
-+			return true; // block Esc during dialogue and cutscene
-+		}
- 		Close();
- 		return true;
- 	}
 diff --git a/gemrb/core/Inventory.cpp b/gemrb/core/Inventory.cpp
 index aabecb8..12ad57f 100644
 --- a/gemrb/core/Inventory.cpp
@@ -96,7 +86,7 @@ index aabecb8..12ad57f 100644
  				return false;
  			}
 diff --git a/gemrb/core/Map.cpp b/gemrb/core/Map.cpp
-index 027f430..f230a2f 100644
+index 594cdca..85f7d59 100644
 --- a/gemrb/core/Map.cpp
 +++ b/gemrb/core/Map.cpp
 @@ -1071,7 +1071,8 @@ AreaAnimation* Map::GetNextAreaAnimation(aniIterator& iter, ieDword gametime) co
@@ -137,10 +127,10 @@ index 027f430..f230a2f 100644
  	FogMapData mapData {
  		exploredBits,
 diff --git a/gemrb/plugins/GUIScript/GUIScript.cpp b/gemrb/plugins/GUIScript/GUIScript.cpp
-index 9006193..f3ac078 100644
+index d11cd7f..d4c31c7 100644
 --- a/gemrb/plugins/GUIScript/GUIScript.cpp
 +++ b/gemrb/plugins/GUIScript/GUIScript.cpp
-@@ -9369,6 +9369,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
+@@ -9373,6 +9373,12 @@ static PyObject* GemRB_DragItem(PyObject* /*self*/, PyObject* args)
  		}
  		si = TryToUnequip(actor, core->QuerySlot(Slot), Count);
  		actor->RefreshEffects();

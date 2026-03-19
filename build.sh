@@ -2,10 +2,12 @@
 set -e
 
 # =============================================================================
-# GemRB Master (e1ae06041d) Build — TrimUI Brick / MuOS
+# GemRB Master (da541e00d6) Build — TrimUI Brick / MuOS
 #
-# Builds upstream master (e1ae06041d) with 7 compatibility patches:
-#   - CORE_fixes: OnMouseDrag crash fix, Esc-in-dialog block, weapon anim on equip/remove
+# Builds upstream master (da541e00d6) with 7 compatibility patches:
+#   - CORE_fixes: cutscene mouse-click blocking, WillDraw highlight suppression,
+#     HitTest cutscene guard, mouse-drag buttonStates check, weapon anim on equip/remove,
+#     cutscene fog bypass
 #   - GLES2_fixes: hardcode OPENGLES2_FOUND for Docker build
 #   - GLES2_shader_fix: GLES2 attribute bindings, projection matrix, vertex shader
 #   - dialogue_customization: SetMargins Python binding, name format, compact options
@@ -13,15 +15,15 @@ set -e
 #   - dialogue_footer: TextArea scroll info API for "more below" arrow indicator
 #   - colormod_fix: Fix GlobalColorMod.locked never reset (spell tint persists forever)
 #
-# USE_SDL_CONTROLLER_API is OFF — TrimUI Brick has no analog sticks,
-# so we use gptokeyb for D-pad mouse control and button remapping.
+# GamepadSupport is disabled at runtime (GemRB.cfg) — TrimUI Brick has no
+# analog sticks, so we use gptokeyb for D-pad mouse control and button remapping.
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATCH_DIR="$SCRIPT_DIR/patches"
 WORK_DIR="$SCRIPT_DIR/.build"
 UPSTREAM_REPO="${UPSTREAM_GEMRB:-$SCRIPT_DIR/upstream-gemrb}"
-GEMRB_COMMIT="e1ae06041d574f1a6e83d06990467849a7f6a7d0"
+GEMRB_COMMIT="da541e00d6082c0ede1deb4a73208ddac780b9a1"
 
 echo "=== GemRB Master ($GEMRB_COMMIT) Builder ==="
 echo ""
@@ -104,7 +106,6 @@ cmake .. \
   -DDISABLE_VIDEOCORE=ON \
   -DUSE_LIBVLC=OFF \
   -DSDL_BACKEND=SDL2 \
-  -DUSE_SDL_CONTROLLER_API="OFF" \
   -DSDL_RESOLUTION_INDEPENDANCE="ON" \
   -DCMAKE_INSTALL_PREFIX="/workspace/gemrb/build/engine" \
   -DOPENGL_BACKEND="GLES" \
